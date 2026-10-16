@@ -758,7 +758,7 @@
    "flush"
   ]
  },
- "built_utc": "2026-10-16T01:30:01Z",
+ "built_utc": "2026-10-16T23:20:32Z",
  "certified_zero_because": {
   "cuda": "55 of 55 byte-binding entries record the live array path (array_path_oracle/real-v6 1ab516279d74002a).",
   "metal": "63 of 63 byte-binding entries record the live array path (array_path_oracle/real-v6 1ab516279d74002a).",
@@ -802,23 +802,23 @@
    "system": "Darwin"
   },
   "note": "carved from one integration's suites: the CUDA and Triton test files' cases of its package suite (CPU-only shim, Apple GPU hidden, SUITE_ENFORCE_SKIPS=0) and the Metal test files' cases of its device run (Apple GPU, no shim), on this tree's outcome subject; every marker; MEEP_GPU_DISPATCH=0",
-  "recorded_utc": "2026-10-16T01:29:32Z",
+  "recorded_utc": "2026-10-16T23:19:57Z",
   "reports": [
    {
-    "file": "host_b176.xml",
-    "sha256": "0d834d60e2057ff7f0a196dd070622d20630f93f5cc840b949f0b888db37a810"
+    "file": "host_b179.xml",
+    "sha256": "10cc83cdfc64c6262d247ffa716e73edd3446a75d6ea08408c3430a256ebbc31"
    },
    {
-    "file": "device_b176.xml",
-    "sha256": "502cc690227c4f3a0ebd579a766cbd360a80cee2fe9d78f5d966e596500cd3eb"
+    "file": "device_b179.xml",
+    "sha256": "a3c74140ac5551151599c29601bb21982a18cdb11a1521d1596fe3edf18f8dbf"
    }
   ],
-  "subject_manifest_sha256": "a83679c745e50993792457698a826507c70df48ff89515a597ce649e389e0830"
+  "subject_manifest_sha256": "5baac1faf50bc87b5bf7466e9bdf0a363b1c13449f94f1314dde96980380ab26"
  },
  "schema": "meep_gpu.parity_board",
  "subject": {
   "files": 1163,
-  "sha256": "d492a18d9930faf87c6116ee7936b19d782c7d3de017775ced369cf3599a1812"
+  "sha256": "41da12d02fcae9e74d25cfe480d11326b5c0e334b5fe69bc885e671553f82926"
  },
  "tables": {
   "cuda": {

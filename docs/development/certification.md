@@ -31,7 +31,7 @@ record names is byte-equal).
 | MEEP identity of the array path (CERT-1, Table 2) | 193, 193, 192 and 192 of 194 corpus simulations on the four references ([Table 2](meep-identity-corpus.md)) |
 | The direct corpus check (CERT-5) | NVIDIA: 192 of 192 rows on each of four legs. Metal: 160 of 160 against the Linux flush reference outside 32 pre-registered rows, 192 of 192 against the Mac flush reference ([L3](#the-direct-corpus-check-against-meep-l3)) |
 | The ledger-contract tests | The certification suite (pytest marker <code>certification</code>), not run by default and run with <code>-m certification</code>. The tests it still fails on are each declared in <code>tools/ci/pending_certification.txt</code>, under a block that names the step that removes them; on the records' tree the contract files and the listed tests read 0 undeclared failures. See [The certification suite is not run by default](testing.md#the-certification-suite-is-not-run-by-default) |
-| Timing | Not part of certification. The 1.0 timing (CERT-8) follows in a documentation update after the release; 1.0 ships the 2026-09-21 dispatch-preference records ([Timing is a separate activity](#timing-is-a-separate-activity)) |
+| Timing | Not part of certification. The 1.0 timing (CERT-8) ran on this release's bytes on 2026-10-16, after the certification round; its figures and their conditions are in [Will it help?](../guides/will-it-help.md#the-comparison-with-meep). 1.0.0 ships the 2026-09-21 dispatch-preference records, and the records the 1.0 timing cut land in a later 1.0.x release ([Timing is a separate activity](#timing-is-a-separate-activity)) |
 
 Every GPU but these two runs the kernels by default, uncertified, and a GPU is added by a
 round of its own on these bytes that writes records and no code
@@ -191,7 +191,7 @@ Seven JSON ledgers ship inside the package and are read at run time:
 | <code>meep_gpu/cuda_kernels/certification.json</code> | The hand-written CUDA table's campaign records, including the device source strings |
 | <code>meep_gpu/cuda_kernels/own_cell_hoist_reference.json</code> | The reference record of one hand-written CUDA kernel rewrite |
 | <code>meep_gpu/metal_kernels/fingerprints.json</code> | The Metal table's certification entries and its dispatch record |
-| <code>meep_gpu/triton_kernels/timing_cc86.json</code>, <code>meep_gpu/cuda_kernels/timing_cc86.json</code> | Timing records cut from timing rows, one per compute capability |
+| <code>meep_gpu/triton_kernels/timing_cc86.json</code>, <code>meep_gpu/cuda_kernels/timing_cc86.json</code> | Timing records cut from timing rows, one per compute capability. 1.0.0 ships the 2026-09-21 cut; the 1.0 timing's (2026-10-16) lands in a later 1.0.x release |
 
 Each certification entry binds a gate's verdict to the sha256 digests of the
 source files that produced it. An entry of the two NVIDIA ledgers keeps **one record

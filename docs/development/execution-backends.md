@@ -317,10 +317,11 @@ MEEP_GPU_SUBNORMAL_POLICY=flush python -m parity.meep_gpu.recut_metal_corpus \
 
 ### What this table still does not have
 
-1. Throughput evidence beyond one case. The only Metal timing of record is one
-   3-D PML case on one laptop under held residency, and the route gates support
-   no timing claim; the figures and their limits are in
-   [Compiled-kernel dispatch](../guides/kernel-dispatch.md#the-metal-table-and-held-residency).
+1. Throughput evidence beyond one case. The only Metal timings of record are one
+   3-D PML case on one laptop under held residency, at five sizes (the 1.0
+   timing, 2026-10-16), and the route gates support no timing claim; the figures
+   and their limits are in
+   [Will it help?](../guides/will-it-help.md#on-one-apple-m1-max).
 2. A corpus re-cut and complete-job validation on the current basis.
 3. A safe process model for MEEP and Torch. On the current development install
    their OpenMP runtimes cannot safely share one test process, so CPU-MEEP

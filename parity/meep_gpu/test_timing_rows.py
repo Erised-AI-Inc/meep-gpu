@@ -1145,3 +1145,192 @@ def test_a_release_drive_table_with_no_sweep_and_no_rows_is_named_not_cut(tmp_pa
     named = (out / "missing_keys.txt").read_text()
     assert f"cuda on {ARCH}: no valid row of this table" in named
     assert f"triton on {ARCH}: its DRIVE cases are the release's" in named
+
+
+# ---------------------------------------------------------------------------
+# R33: the 5 % gate is the between-pass spread; the window spread is recorded
+# ---------------------------------------------------------------------------
+
+#: The strike a ladder wrote, before R33, on a pass the bench made TIMED-NOT-REPORTABLE
+#: for its within-pass window spread alone (``timing_records.record_gpu``).
+WINDOW_STRIKE = "TIMED-NOT-REPORTABLE: floors failed ['spread_within_gate']"
+
+
+def r33_passes(rates, windows, struck=None):
+    return [{"pass": index + 1, "rate": rate, "spread": window,
+             "struck": (struck or {}).get(index + 1)}
+            for index, (rate, window) in enumerate(zip(rates, windows))]
+
+
+def pre_r33_leg(passes):
+    """A GPU leg as a ladder collected it before R33: struck by any struck pass."""
+    reasons = [f"pass {p['pass']}: {p['struck']}" for p in passes if p.get("struck")]
+    rates = [p["rate"] for p in passes]
+    return {"median": sorted(rates)[len(rates) // 2], "passes": passes,
+            "between_pass_spread": TR.spread(rates),
+            "status": "struck" if reasons else "passed",
+            "gate": ("struck by the 5 % gate: " + "; ".join(reasons)) if reasons
+            else "passed the 5 % gate"}
+
+
+def r33_row(cells, session, gpu, meep=None):
+    record = ladder_row(cells, session, "2026-10-20T10:00:00Z")
+    record["legs"] = {"gpu": {"cuda": gpu}, "array": None,
+                      "meep": {"meep@32": meep or meep_leg((500.0, 505.0, 495.0), 32)}}
+    return record
+
+
+def r33_table(tmp_path, records):
+    root = release_tree(tmp_path)
+    selection = TR.select(TR.load_store(store_of(tmp_path, records)), root)
+    return {row["cells"]: row for row in TR.cut_ladder_table(selection, ARCH)["rows"]}
+
+
+def test_a_row_whose_windows_jitter_10_percent_but_whose_passes_agree_within_1_percent_enters(
+        tmp_path):
+    """R33: passes 2000 / 2010 / 1995 (0.75 % between passes), windows 10 % / 2 % / 10 %.
+    The row enters whether its ladder struck the jittery passes (written before R33) or
+    not (written after), and the window spreads are printed beside it."""
+    rates, windows = (2000.0, 2010.0, 1995.0), (0.10, 0.02, 0.10)
+    before = r33_row(512000, "s1", pre_r33_leg(
+        r33_passes(rates, windows, struck={1: WINDOW_STRIKE, 3: WINDOW_STRIKE})))
+    after = r33_row(2097152, "s1", TR.leg_median(r33_passes(rates, windows), "gpu"))
+    rows = r33_table(tmp_path, [before, after])
+    for cells in (512000, 2097152):
+        leg, ratio = rows[cells]["gpu"]["cuda"], rows[cells]["ratios"]["cuda"]
+        assert leg["status"] == "passed" and leg["gate"] == "passed the 5 % gate", cells
+        assert leg["between_pass_spread"] == pytest.approx(15.0 / 2000.0, rel=1e-5)
+        assert leg["window_spread_max"] == pytest.approx(0.10)
+        assert [p["spread"] for p in leg["passes"]] == list(windows)
+        assert ratio["enters"] is True and ratio["ratio"] == pytest.approx(2000.0 / 500.0)
+    assert rows[512000]["gpu"]["cuda"]["pre_r33_window_strikes_read_unstruck"] == [1, 3]
+    assert rows[512000]["gpu"]["cuda"]["passes"][0]["struck_as_recorded"] == WINDOW_STRIKE
+
+
+def test_a_row_whose_passes_disagree_by_6_percent_is_struck(tmp_path):
+    """R33: passes 2000 / 2120 / 2060 spread 5.8 % between passes, with every window
+    within 1 %: the leg is struck by the gate, printed with its median, and its ratio
+    does not enter."""
+    leg = TR.leg_median(r33_passes((2000.0, 2120.0, 2060.0), (0.01, 0.01, 0.01)), "gpu")
+    assert leg["status"] == "struck" and leg["median"] == 2060.0
+    assert "between-pass spread 0.0583 > 0.05" in leg["gate"]
+    row = r33_table(tmp_path, [r33_row(512000, "s1", leg)])[512000]
+    assert row["gpu"]["cuda"]["status"] == "struck"
+    assert row["ratios"]["cuda"]["enters"] is False
+    assert "struck by the 5 % gate: between-pass spread" in row["ratios"]["cuda"]["why"]
+
+
+def test_meep_is_never_struck_for_its_spread_under_r33(tmp_path):
+    """MEEP's own spread, between passes (12 %) or inside them (up to 20 %), strikes
+    nothing: its leg is ungated, it is the row's best, and the ratio over it enters."""
+    meep = dict(TR.leg_median(r33_passes((440.0, 500.0, 460.0), (0.15, 0.20, 0.12)),
+                              "meep"), ranks=32, control=None)
+    assert meep["status"] == "ungated" and TR.MEEP_SPREAD_RULE in meep["gate"]
+    gpu = TR.leg_median(r33_passes((2000.0, 2010.0, 1995.0), (0.01,) * 3), "gpu")
+    row = r33_table(tmp_path, [r33_row(512000, "s1", gpu, meep=meep)])[512000]
+    assert row["meep"]["meep@32"]["status"] == "ungated"
+    assert row["meep"]["meep@32"]["between_pass_spread"] == pytest.approx(60.0 / 460.0,
+                                                                          rel=1e-5)
+    assert row["meep_best"] == "meep@32" and row["ratios"]["cuda"]["enters"] is True
+    assert row["ratios"]["cuda"]["ratio"] == pytest.approx(2000.0 / 460.0, rel=1e-4)
+
+
+def test_the_window_spread_still_appears_in_the_record_and_the_table(tmp_path):
+    """Every pass of a record keeps its fused leg's window spread and, since R33, every
+    leg's; the cut keeps them per pass with their largest, and the table prints them."""
+    ladder = tmp_path / "ladder_s1_u01"
+    bench = fixtures.bench_row(case="pml_3d", table="cuda")
+    bench[TR.IMPORTED_KEY] = imported(ALL_LOADED)
+    bench[TR.DATA_KEY] = {}
+    ledger = []
+    for p, (rate, window) in enumerate(((2000.0, 0.09), (2010.0, 0.03)), 1):
+        rows_file = ladder / "gpu_cuda" / f"pass{p}" / "pml_3d_res80" / "rows.jsonl"
+        write_jsonl(rows_file, [bench])
+        ledger.append({"ledger": "gpu", "index": p, "tier": "priority", "case": "pml_3d",
+                       "utc": f"2026-10-20T10:0{p}:00Z", "cells_planned": 512000,
+                       "pass": p, "route": "cuda", "rows_file": str(rows_file),
+                       "struck": None,
+                       "measured": {"legs": {
+                           "fused": {"mcell_steps_per_s": rate, "spread": window},
+                           "unfused": {"mcell_steps_per_s": 900.0, "spread": 0.07},
+                           "array": {"mcell_steps_per_s": 30.0, "spread": 0.02}}}})
+    write_jsonl(ladder / "ladder_rows.jsonl", ledger)
+    session = {"id": "s1", "started_utc": "2026-10-20T10:00:00Z",
+               "ended_utc": "2026-10-20T11:00:00Z"}
+    record, = TR.ladder_records(str(ladder), session=session, architecture=ARCH,
+                                environment=ENVIRONMENT, gates=GATES,
+                                unit={"name": "u", "rc": 0})
+    stored = record["legs"]["gpu"]["cuda"]["passes"]
+    assert [p["spread"] for p in stored] == [0.09, 0.03]
+    assert stored[0]["window_spreads"] == {"array": 0.02, "fused": 0.09, "unfused": 0.07}
+    record["legs"]["meep"] = {"meep@32": meep_leg((500.0, 505.0), 32)}
+    row = r33_table(tmp_path, [record])[512000]
+    leg = row["gpu"]["cuda"]
+    assert leg["status"] == "passed" and leg["window_spread_max"] == pytest.approx(0.09)
+    assert leg["passes"][1]["window_spreads"]["unfused"] == 0.07
+    root = release_tree(tmp_path)
+    table = TR.cut_ladder_table(TR.select(TR.load_store(str(tmp_path / "store")), root),
+                                ARCH)
+    assert TR.GATE_RULE in table["rules"]["gate_rule"] and table["rules"]["pre_r33"]
+    text = TR.render_table(table)
+    assert "| fused window spreads |" in text and "| 9.00 % / 3.00 % |" in text
+    assert "R33" in text
+
+
+def test_a_row_cuts_to_one_verdict_whichever_side_of_r33_it_was_written_on(tmp_path):
+    """The cut reads the passes, never the status a ladder baked into the record: a row
+    collected before R33 (window-only strikes, its leg struck) and one collected after
+    (no such strike) with the same rates and window spreads read the same median,
+    spreads, status, gate and ratio. A strike naming another floor keeps that floor;
+    every other strike stands; reading a strike twice changes nothing."""
+    rates, windows = (1360.6, 1363.2, 1364.7), (0.042, 0.015, 0.007)
+    passes = r33_passes(rates, windows, struck={1: WINDOW_STRIKE, 2: WINDOW_STRIKE})
+    old, new = pre_r33_leg(passes), TR.leg_median(r33_passes(rates, windows), "gpu")
+    assert old["status"] == "struck", "the status the old ladder baked in"
+    rows = r33_table(tmp_path, [r33_row(512000, "s1", old), r33_row(2097152, "s1", new)])
+    fields = ("median", "between_pass_spread", "window_spread_max", "status", "gate")
+    read = {cells: {name: rows[cells]["gpu"]["cuda"][name] for name in fields}
+            for cells in rows}
+    assert read[512000] == read[2097152] and read[512000]["status"] == "passed"
+    ratios = {cells: dict(rows[cells]["ratios"]["cuda"]) for cells in rows}
+    assert ratios[512000] == ratios[2097152] and ratios[512000]["enters"] is True
+    both = "TIMED-NOT-REPORTABLE: floors failed ['bit_identical', 'spread_within_gate']"
+    assert TR.r33_strike(both) == "TIMED-NOT-REPORTABLE: floors failed ['bit_identical']"
+    assert TR.r33_strike(TR.r33_strike(both)) == TR.r33_strike(both)
+    assert TR.r33_strike(WINDOW_STRIKE) is None
+    for other in ("the fused leg is not bit-identical to the array leg",
+                  "TIMED-NOT-REPORTABLE: floors failed TypeError: boom",
+                  "host conditions: cpu_state_before: on battery"):
+        assert TR.r33_strike(other) == other
+    standalone = ("the standalone row is TIMED-NOT-REPORTABLE: floors "
+                  "{'windows_launched_nothing': True, 'spread_within_gate': False}")
+    assert TR.r33_strike(standalone) is None
+    struck = TR.leg_median(r33_passes(rates, windows, struck={2: both}), "gpu")
+    assert struck["status"] == "struck" and "['bit_identical']" in struck["gate"]
+    assert TR.leg_median(struck["passes"], "gpu") == struck, "a read leg reads the same"
+
+
+def test_a_fused_row_struck_for_its_window_spread_alone_reads_reportable(tmp_path):
+    """A pre-R33 bench row whose only failed floor is the window floor: its record's
+    legs read as passing the floors that gate, and the dispatch-preference record cut
+    from it admits it (R33, ``cut_timing_record``)."""
+    store = str(tmp_path / "store")
+    path = fused_row(tmp_path, store, case="pml_2d", architecture=ARCH, session="s1",
+                     ended="2026-10-21T10:00:00Z")
+    line = json.loads(open(path[:-5] + ".rows.jsonl").read())
+    old = dict(line, reportable=False, verdict="TIMED-NOT-REPORTABLE",
+               floors=dict(line["floors"], spread_within_gate=False))
+    assert TR.reportable(old) and not TR.reportable(
+        dict(old, floors=dict(old["floors"], bit_identical=False)))
+    assert TR.gating_floors(old) == {k: v for k, v in line["floors"].items()
+                                     if k != "spread_within_gate"}
+    rows_path = tmp_path / "old" / "rows.jsonl"
+    rows_path.parent.mkdir(parents=True)
+    rows_path.write_text(json.dumps(old) + "\n")
+    record, _line = TR.fused_record(str(rows_path), key=TR.fused_key(
+        ARCH, "triton", "pml_2d", "res24000", 2), session={
+            "id": "s2", "started_utc": "a", "ended_utc": "2026-10-22T10:00:00Z"},
+        environment=ENVIRONMENT, gates=GATES, unit={"name": "u", "rc": 0})
+    assert {leg["gate"] for leg in record["legs"]["per_leg"].values()} == {
+        "passed the bench's floors"}
+    assert cut.admission_refusal(old, "triton", False) is None

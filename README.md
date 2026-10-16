@@ -40,49 +40,62 @@ three-dimensional grids, on short runs, or on an NVIDIA GPU outside the
 certified set; most of these cases have not been timed against MEEP (the list
 below says what each rests on).
 
-A comparison with MEEP on the identical problem was made on
-2026-09-28. On one 3-D case, from 512,000 to 7,077,888 cells, the GPU stepped
-1.80 to 3.67 times as fast as MEEP on the Triton route (what a default run
-takes on a certified NVIDIA host with Triton installed), and 1.68 to 3.24 times
-as fast on the CUDA-only route. Read those numbers with their conditions:
+The 1.0 timing compared the package with MEEP on the identical problem, on the
+bytes of this release, on 2026-10-16. On one 3-D case, per step, against MEEP at
+its fastest rank count on the same machine:
 
-- one NVIDIA RTX A6000 against one host with 48 physical cores, in the same
-  machine;
-- single precision on both sides (MEEP 1.33.0 built from source with
-  `--enable-single`);
+- **One NVIDIA RTX A6000**, against the machine's 48 CPU cores: from 512,000 to
+  7,077,888 cells the GPU stepped 1.65 to 5.04 times as fast as MEEP on the
+  Triton route (what a default run takes on a certified NVIDIA host with Triton
+  installed), and 1.45 to 5.81 times as fast on the CUDA-only route.
+- **One Apple M1 Max**, against MEEP at 8 ranks on its own CPU: 0.82 times at
+  110,592 cells, rising to 1.69 times at 512,000 and 2.72 times at 7,077,888
+  cells. These medians enter under a timing check that was ruled after the runs
+  had been seen; under the earlier check only the largest size entered
+  ([the change](docs/guides/will-it-help.md#the-timing-check-and-the-change-made-after-these-runs)).
+
+Read those numbers with their conditions:
+
+- one GPU against the CPU of the same machine, one machine per platform;
+- single precision on both sides, against MEEP 1.33.0 as this release's reference
+  environment builds it (single precision, no floating-point contraction, a
+  portable binary), not a native-tuned MEEP;
 - this one 3-D case (a dielectric sphere under PML) with one flux monitor, the
   same simulation on both sides;
-- steady-state stepping, not counting the one-off lift before the first step,
-  which took about 19 s at 512,000 cells and 216 s at 7,077,888 cells: on the
-  Triton route the GPU run finishes first only after about 19,000 to 35,000
-  steps;
-- MEEP at the fastest of the seven rank counts tried (1, 8, 16, 24, 32, 48 and
-  64);
+- per step, not counting the one-off lift before the first step, which took
+  about 7 s at 512,000 cells and 49 s at 7,077,888 cells on the NVIDIA host:
+  there, on the Triton route and derived from the lift and the step rates, the
+  GPU run is ahead after about 5,900 steps at 512,000 cells and 460 at 7,077,888,
+  and at 2,097,152 cells the lift is shorter than MEEP's own start-up, not
+  counting the GPU's own cost of its first steps;
+- MEEP at the fastest rank count tried (1 to 64 ranks on the NVIDIA host; MPI
+  ranks with OpenMP threads each read up to 2.7 % faster there, but those runs
+  are struck by a defect of the timing harness);
 - the CUDA-only route is the hand-written CUDA kernel table serving alone, the
-  table a host without Triton uses (timed on a host that also had Triton); it
-  is being improved for the next release, and these figures will be updated
-  then.
+  table a host without Triton uses (timed on a host that also had Triton).
 
-[Will it help?](docs/guides/will-it-help.md) has the table, every condition
-and the break-even step count at each size. The figures were measured on the
-development tree this release was prepared from; the 1.0 timing (CERT-8) follows
-in a documentation update after the release.
+[Will it help?](docs/guides/will-it-help.md) has the tables, every condition,
+the lift and the break-even step count at each size. 1.0.0 ships the 2026-09-21
+dispatch-preference records; the records the 1.0 timing cut land in a later 1.0.x
+release.
 
 Where it does not help, or has not been measured:
 
 - **Two-dimensional problems and small three-dimensional problems are slower
-  than on MEEP.** None has been timed against MEEP on a matched problem: the
-  ratio falls as the grid gets smaller (1.80 times at 512,000 cells), and the
-  dispatched step has a fixed cost per step. Measure your own case.
-- **Apple hardware.** No comparison with MEEP on the identical problem on a Mac
-  has produced a figure of record. On the one Mac measured, a default run is
-  slower than the package's own NumPy reference below about 125,000 cells in 3-D.
+  than on MEEP.** No two-dimensional problem has been timed against MEEP on a
+  matched problem. In 3-D the ratio falls as the grid gets smaller (on the
+  Apple laptop 0.82 times MEEP at 110,592 cells; on the NVIDIA host nothing
+  below 512,000 cells was timed), and the dispatched step has a fixed cost per
+  step. Measure your own case.
+- **Small grids on a Mac.** On the one Mac measured, a default run is slower
+  than the package's own NumPy reference below about 125,000 cells in 3-D.
 - **Short runs.** Below the break-even step count, MEEP finishes first. Run to
   its own end time (1,400 to 3,360 steps), the timed case finishes first on
-  MEEP at every size.
+  MEEP at 512,000 cells and on the GPU from 2,097,152 cells up, on the NVIDIA
+  host (derived from the lift and the step rates, not timed end to end).
 - **An NVIDIA GPU or library version outside the supported range** takes the
   array path, CuPy on the GPU: on the one card measured, slower than MEEP's
-  fastest rank count at each of the three sizes (0.22 to 0.73 times); no other
+  fastest rank count at each of the three sizes (0.15 to 0.67 times); no other
   card has been measured. Expect no gain over MEEP. A supported NVIDIA GPU
   outside the certified set (compute capability 7.0 to 9.0) runs the compiled
   kernels by default, uncertified, and says so
@@ -476,9 +489,10 @@ Stated plainly:
   still fails on are listed in `tools/ci/pending_certification.txt`, each under
   the step that removes it, and [Running the tests](docs/development/testing.md)
   explains them; none is skipped or removed.
-- **Timing is not part of certification.** The 1.0 timing (CERT-8) follows in a
-  documentation update after the release; the speeds above are measurements on
-  the development tree this release was prepared from.
+- **Timing is not part of certification.** The 1.0 timing (CERT-8) ran on this
+  release's bytes on 2026-10-16, after the certification round; the speeds against
+  MEEP above are its figures. 1.0.0 ships the 2026-09-21 dispatch-preference records, and the
+  records the 1.0 timing cut land in a later 1.0.x release.
 
 [Certification status](docs/development/certification.md#certification-status-of-this-release)
 has every figure of the round, and

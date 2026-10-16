@@ -9,7 +9,10 @@ documents avoid by being generated rather than transcribed.
 WHAT IT REFUSES TO PRINT. A row whose floors did not all pass is NOT given a
 speedup column. It is listed, by name, under the floor it failed, because a case
 that could not be measured is a fact about the campaign and hiding it would make
-the table read as complete when it is not. ``reference_census_refuse_unmeasurable
+the table read as complete when it is not. The within-pass window spread is no
+floor (owner ruling R33, 2026-10-16): it is recorded on every row and gates nothing,
+and a row written before the bench moved it out of its floors is read here as one
+written after (:func:`reportable`). ``reference_census_refuse_unmeasurable
 _rows_by_name`` is the same rule one layer up.
 
 TWO POPULATIONS, NEVER ONE MEDIAN (2026-09-20). Rows the METAL table served are a
@@ -35,6 +38,25 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 def load(path: str) -> List[Dict[str, Any]]:
     with open(path) as handle:
         return [json.loads(line) for line in handle if line.strip()]
+
+
+#: The bench floor that read a leg's within-pass window spread until owner ruling R33.
+WINDOW_FLOORS = ("spread_within_gate",)
+
+
+def gating_floors(row: Dict[str, Any]) -> Dict[str, Any]:
+    """A row's floors without the window floor: the ones that gate under R33."""
+    return {name: value for name, value in (row.get("floors") or {}).items()
+            if name not in WINDOW_FLOORS}
+
+
+def reportable(row: Dict[str, Any]) -> bool:
+    """Every floor that gates passed (R33), read off the floors themselves, so a row
+    the bench marked not reportable for its window spread alone reads reportable."""
+    if not row.get("floors"):
+        return bool(row.get("reportable"))
+    floors = gating_floors(row)
+    return bool(floors) and all(bool(value) for value in floors.values())
 
 
 # ---------------------------------------------------------------------------
@@ -565,7 +587,7 @@ def sweep_lines(after: List[Dict[str, Any]], before: List[Dict[str, Any]]) -> Li
     size at which the fused step beats the same-table singles and the largest at which
     it does not -- a bracket, never an interpolation.
     """
-    usable = [r for r in after if r.get("reportable") and same_table(r)
+    usable = [r for r in after if reportable(r) and same_table(r)
               and per_step(r, "fused") and per_step(r, "unfused") and per_step(r, "array")]
     if not usable:
         return []
@@ -933,9 +955,9 @@ def render(rows: List[Dict[str, Any]], title: str,
     # control used, so refusing the whole row would throw away a good measurement to
     # punish a bad one. They are tabled together and the fusion column is blanked
     # with the reason; only ``fusion`` rows enter the headline median.
-    every_good = [r for r in rows if r.get("reportable") or (
+    every_good = [r for r in rows if reportable(r) or (
         r.get("ratios") and r.get("floors")
-        and all(v for k, v in r["floors"].items()
+        and all(v for k, v in gating_floors(r).items()
                 if k not in ("singles_are_the_same_table",)))]
     # AND TWO DEVICE FAMILIES. Rows the Metal table served get their own section
     # (:func:`metal_section`); ``good`` and ``fusion`` below are the NVIDIA rows, so
@@ -968,11 +990,13 @@ def render(rows: List[Dict[str, Any]], title: str,
         "",
         "Every number is a median over the campaign's AB/BA windows, measured from "
         "one frozen state with monitors detached. A row reaches the table below "
-        "only if it passed the six floors that apply to any measurement: the "
+        "only if it passed the five floors that apply to any measurement: the "
         "substitution was proved, the fused leg was bit-identical to the array "
-        "path, every leg moved bits and produced no non-finite value, no kernel "
-        "compiled inside a timed window, and every leg's spread stayed inside the "
-        "gate. A SEVENTH floor governs the `vs singles` column alone — the control "
+        "path, every leg moved bits and produced no non-finite value, and no kernel "
+        "compiled inside a timed window. Every leg's within-window spread is "
+        "recorded and gates nothing (owner ruling R33): a figure's stability is "
+        "read across passes, where the cutters apply the 5 % gate. A SIXTH floor "
+        "governs the `vs singles` column alone — the control "
         "must have run the same kernel table as the subject — so a row can be a "
         "sound measurement against the array path and carry no fusion number.",
         "",
@@ -1028,7 +1052,7 @@ def render(rows: List[Dict[str, Any]], title: str,
     if metal_rows:
         out += metal_section(metal_rows, metal_good)
 
-    refused = [r for r in rows if not r.get("reportable")]
+    refused = [r for r in rows if not reportable(r)]
     if refused:
         out += ["## Refused, by name and by the floor that refused them", ""]
         by_floor: Dict[str, List[str]] = {}
@@ -1036,7 +1060,7 @@ def render(rows: List[Dict[str, Any]], title: str,
         # one case name can be refused on one device family and measured on the other.
         marked = len(metal_rows) < len(rows)
         for row in refused:
-            floors = row.get("floors") or {}
+            floors = gating_floors(row)
             failed = [k for k, v in floors.items() if not v] or [
                 row.get("verdict", "ERROR")]
             for name in failed:
@@ -1171,7 +1195,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     text = render(rows, args.title, load_sweep(args.sweep), load_sweep(args.sweep_before))
     with open(args.out, "w") as handle:
         handle.write(text)
-    good = sum(1 for r in rows if r.get("reportable"))
+    good = sum(1 for r in rows if reportable(r))
     print(f"{args.out}: {len(rows)} rows, {good} reportable", flush=True)
     return 0
 

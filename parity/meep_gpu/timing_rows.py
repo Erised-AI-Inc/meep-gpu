@@ -110,9 +110,15 @@ THE CUTS
   record cut from it names its rows ``results/...``, as the shipped records do); the
   units' run root stays outside every tree the ladder reads.
 * :func:`cut_ladder_table` -- the identical-case table of an architecture from the
-  selected ladder rows: every leg's median over its passes with its gate status. The
-  GPU and array-control legs carry the 5 % gate (within the bench's own floors and
-  between passes); MEEP legs carry their between-pass spread, RECORDED AND NEVER GATED
+  selected ladder rows: every leg's median over its passes with its gate status,
+  RE-DERIVED from the passes the record stores (:func:`leg_median`), never read off
+  the status it was collected with, so a row collected before a rule changed is cut
+  by the rule in force. The GPU and array-control legs carry the 5 % gate of owner
+  ruling R33 (2026-10-16): a leg passes when the spread of its PASS RATES, (max - min)
+  / median over the row's passes, is at most 5 % and no pass is struck for anything
+  else. The within-pass WINDOW spread is recorded with every pass and gates nothing
+  (:func:`r33_strike` reads a pre-R33 strike on the bench's window floor alone as
+  no strike). MEEP legs carry their between-pass spread, RECORDED AND NEVER GATED
   (owner ruling), and are struck only for what is not spread (digest, precision,
   threads, monitor). A ratio is the route's median over MEEP's best unstruck
   reference-configuration median and says whether it enters: it enters when the
@@ -186,9 +192,26 @@ LIBRARIES_KEY = "imported_libraries"
 ENVIRONMENT_KEY = "process_environment"
 #: The catalog the release round's driver reads (``rounds/1.0/cert8.py``).
 CATALOG_SCHEMA = "meep_gpu.cert8_catalog/1"
-#: The 5 % gate: a GPU or array leg's within-window floor (the bench's) and its
-#: between-pass spread.
+#: The 5 % gate (owner ruling R33, 2026-10-16): a GPU or array leg's between-pass
+#: spread, (max - min) / median over its pass rates. Until then the gate was also the
+#: bench's within-window floor; the window spread is now recorded and gates nothing.
 GATE = 0.05
+#: The bench floors that read a leg's within-pass WINDOW spread. A row written before
+#: R33 carries ``spread_within_gate`` among its floors, and its ladder entry may be
+#: struck on it alone; :func:`r33_strike` and :func:`gating_floors` read both as R33
+#: does, so a row cuts to one verdict whichever side of the change it was written on.
+WINDOW_FLOORS = ("spread_within_gate",)
+#: The gate as every cut states it.
+GATE_RULE = ("R33 (owner ruling 2026-10-16): a GPU or array-control leg enters when the "
+             "spread of its pass rates, (max - min) / median over the row's passes, is "
+             "at most 5 % and no pass of it is struck by another check; the "
+             "within-pass window spread is recorded with every pass and gates nothing")
+#: What a cut says of a pass a pre-R33 ladder struck on the window floor alone.
+PRE_R33_RULE = ("a pass a pre-R33 ladder struck on the bench's window floor alone is "
+                "read unstruck; that ladder's recorder stopped at the first strike, so "
+                "for such a pass it never evaluated its later checks (what the route "
+                "launched, a gpu-only row's identity row, the deposit-repair route, the "
+                "host conditions), and a record keeps none of them to re-read")
 #: How a MEEP leg's pass spread is read (owner ruling, the 2026-09-25 Mac night and the
 #: 1.0 round): recorded beside its median, never a reason to strike it.
 MEEP_SPREAD_RULE = ("MEEP's own pass spread is recorded and never strikes a leg "
@@ -954,6 +977,56 @@ def bill(records: Sequence[Mapping[str, Any]], files: Sequence[str], root: str
 # Medians and their gate status (R20)
 # ---------------------------------------------------------------------------
 
+_FLOOR_STRIKE = re.compile(r"^(?P<verdict>TIMED-NOT-REPORTABLE): floors failed "
+                           r"(?P<floors>\[.*\])$", re.S)
+_STANDALONE_STRIKE = re.compile(r"^the standalone row is (?P<verdict>TIMED-NOT-REPORTABLE)"
+                                r": floors (?P<floors>\{.*\})$", re.S)
+
+
+def r33_strike(struck: Optional[str]) -> Optional[str]:
+    """A pass's strike as R33 reads it: the strike a ladder wrote, with the window floor
+    taken out of a floor strike (:data:`WINDOW_FLOORS`). A strike on the window floor
+    alone is no strike; one that also names another floor keeps that one; every other
+    strike stands as written. Idempotent, so a strike already read is read the same."""
+    if not isinstance(struck, str):
+        return struck
+    for pattern in (_FLOOR_STRIKE, _STANDALONE_STRIKE):
+        match = pattern.match(struck)
+        if not match:
+            continue
+        try:
+            floors = ast.literal_eval(match.group("floors"))
+        except (SyntaxError, ValueError):
+            return struck
+        if isinstance(floors, dict):
+            failed = [str(name) for name, ok in floors.items() if ok is not True]
+        elif isinstance(floors, (list, tuple)):
+            failed = [str(name) for name in floors]
+        else:
+            return struck
+        if not any(name in WINDOW_FLOORS for name in failed):
+            return struck
+        kept = [name for name in failed if name not in WINDOW_FLOORS]
+        return (f"{match.group('verdict')}: floors failed {kept}" if kept else None)
+    return struck
+
+
+def gating_floors(row: Mapping[str, Any]) -> Dict[str, Any]:
+    """A bench row's floors without the window floor (R33): what decides whether the
+    row is reportable, read the same off a row written before the bench moved the
+    window spread out of its floors and one written after."""
+    return {name: value for name, value in (row.get("floors") or {}).items()
+            if name not in WINDOW_FLOORS}
+
+
+def reportable(row: Mapping[str, Any]) -> bool:
+    """Whether a bench row passed every floor that gates under R33."""
+    floors = gating_floors(row)
+    if not row.get("floors"):
+        return row.get("reportable") is True
+    return bool(floors) and all(value is True for value in floors.values())
+
+
 def spread(values: Iterable[Optional[float]]) -> Optional[float]:
     found = [float(v) for v in values if isinstance(v, (int, float)) and v]
     if len(found) < 2:
@@ -961,17 +1034,35 @@ def spread(values: Iterable[Optional[float]]) -> Optional[float]:
     return (max(found) - min(found)) / statistics.median(found)
 
 
+def _r33_pass(entry: Mapping[str, Any]) -> Dict[str, Any]:
+    """One pass as R33 reads it: its rate, its window spread (recorded, gating nothing),
+    the strike R33 keeps, and -- when that differs -- the strike its ladder wrote."""
+    recorded = entry.get("struck_as_recorded", entry.get("struck"))
+    out = {"pass": entry.get("pass"), "rate": entry.get("rate"),
+           "spread": entry.get("spread"), "struck": r33_strike(recorded)}
+    if recorded != out["struck"]:
+        out["struck_as_recorded"] = recorded
+    if entry.get("window_spreads") is not None:
+        out["window_spreads"] = entry["window_spreads"]
+    return out
+
+
 def leg_median(passes: Sequence[Mapping[str, Any]], kind: str) -> Dict[str, Any]:
     """One leg over its passes: its median, its between-pass spread, its gate status.
 
-    ``kind`` is ``gpu`` (a route or the array control: the 5 % gate, every pass TIMED
-    and unstruck, between-pass spread within it) or ``meep`` (struck only for what is
-    not spread; the pass spread recorded, never gated)."""
+    ``kind`` is ``gpu`` (a route or the array control: the 5 % gate of R33, no pass
+    struck and the between-pass spread of its rates within it; each pass's window
+    spread recorded, gating nothing) or ``meep`` (struck only for what is not spread;
+    the pass spread recorded, never gated). Every pass is read through
+    :func:`r33_strike`, so the leg reads the same whether its ladder struck window
+    jitter or not, and reading a leg this returned gives it back unchanged."""
+    passes = [_r33_pass(p) for p in passes]
     values = [p.get("rate") for p in passes]
     struck = [f"pass {p.get('pass')}: {p['struck']}" for p in passes if p.get("struck")]
     # A MEEP leg's spread is over the passes that enter its median; a GPU leg's over all.
     between = spread([p.get("rate") for p in passes if not p.get("struck")]
                      if kind == "meep" else values)
+    windows = [p.get("spread") for p in passes if isinstance(p.get("spread"), (int, float))]
     if kind == "meep":
         kept = [p.get("rate") for p in passes if not p.get("struck")
                 and isinstance(p.get("rate"), (int, float))]
@@ -991,12 +1082,16 @@ def leg_median(passes: Sequence[Mapping[str, Any]], kind: str) -> Dict[str, Any]
         status = "struck" if reasons or median is None else "passed"
         gate = ("passed the 5 % gate" if status == "passed"
                 else "struck by the 5 % gate: " + ("; ".join(reasons) or "no measurement"))
-    return {"median": None if median is None else round(float(median), 4),
-            "passes": [{"pass": p.get("pass"), "rate": p.get("rate"),
-                        "spread": p.get("spread"), "struck": p.get("struck")}
-                       for p in passes],
-            "between_pass_spread": None if between is None else round(between, 6),
-            "status": status, "gate": gate}
+    cleared = [p.get("pass") for p in passes
+               if p.get("struck_as_recorded") and not p.get("struck")]
+    out = {"median": None if median is None else round(float(median), 4),
+           "passes": passes,
+           "between_pass_spread": None if between is None else round(between, 6),
+           "window_spread_max": round(max(windows), 6) if windows else None,
+           "status": status, "gate": gate}
+    if cleared:
+        out["pre_r33_window_strikes_read_unstruck"] = cleared
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1148,7 +1243,11 @@ def ladder_records(ladder_dir: str, *, session: Mapping[str, Any], architecture:
                 fused = (measured.get("legs") or {}).get("fused") or {}
                 gpu.setdefault(route, []).append({
                     "pass": entry.get("pass"), "rate": fused.get("mcell_steps_per_s"),
-                    "spread": fused.get("spread"), "struck": entry.get("struck")})
+                    "spread": fused.get("spread"), "struck": entry.get("struck"),
+                    # EVERY LEG'S WINDOW SPREAD, recorded and gating nothing (R33): the
+                    # bench's old floor read all three, the pass rate is the fused leg's
+                    "window_spreads": {label: (leg or {}).get("spread") for label, leg
+                                       in sorted((measured.get("legs") or {}).items())}})
                 row = _last(str(entry.get("rows_file") or "")) or {}
                 stamped.add(row_architecture(row))
                 record["processes"].append(bench_process(
@@ -1250,12 +1349,13 @@ def fused_record(rows_path: str, *, key: str, session: Mapping[str, Any],
     legs = {}
     for label, leg in sorted((row.get("per_leg") or {}).items()):
         per_step = leg.get("median_seconds_per_step")
+        # THE FLOORS THAT GATE (R33): the window spread is recorded beside them.
         legs[label] = {"ms_per_step": None if per_step is None else 1e3 * per_step,
                        "spread": leg.get("spread"),
-                       "gate": ("passed the bench's floors" if row.get("reportable")
+                       "gate": ("passed the bench's floors" if reportable(row)
                                 else "struck by the bench's floors: " + ", ".join(
-                                    k for k, v in (row.get("floors") or {}).items()
-                                    if not v))}
+                                    k for k, v in gating_floors(row).items()
+                                    if v is not True))}
     record["legs"] = {"verdict": row.get("verdict"), "per_leg": legs,
                       "ratios": row.get("ratios")}
     return record, line
@@ -1294,8 +1394,15 @@ def cut_ladder_table(selection: Mapping[str, Any], architecture: str,
             continue
         chosen_records.append(record)
         legs = record.get("legs") or {}
-        routes = {name: leg for name, leg in (legs.get("gpu") or {}).items()}
-        meep = legs.get("meep") or {}
+        # RE-DERIVED FROM THE PASSES, never read off the status the record was collected
+        # with: a row collected under an earlier rule cuts by the rule in force (R33).
+        routes = {name: leg_median(leg.get("passes") or (), "gpu")
+                  for name, leg in (legs.get("gpu") or {}).items()}
+        array = (leg_median(legs["array"].get("passes") or (), "gpu")
+                 if legs.get("array") else None)
+        meep = {name: dict(leg_median(leg.get("passes") or (), "meep"),
+                           ranks=leg.get("ranks"), control=leg.get("control"))
+                for name, leg in (legs.get("meep") or {}).items()}
         reference = {name: leg for name, leg in meep.items() if not leg.get("control")}
         best_name, best = None, None
         for name, leg in sorted(reference.items()):
@@ -1323,11 +1430,12 @@ def cut_ladder_table(selection: Mapping[str, Any], architecture: str,
                      if record.get("_path") else None,
                      "record_sha256": record.get(DIGEST_FIELD),
                      "variance": variance,
-                     "gpu": routes, "array": legs.get("array"), "meep": meep,
+                     "gpu": routes, "array": array, "meep": meep,
                      "meep_best": best_name, "ratios": ratios})
     one_environment(chosen_records, f"the {architecture} identical-case table")
     return {"schema": "meep_gpu.timing_table/1", "architecture": architecture,
-            "rules": {"gate": GATE, "meep": MEEP_SPREAD_RULE,
+            "rules": {"gate": GATE, "gate_rule": GATE_RULE, "pre_r33": PRE_R33_RULE,
+                      "meep": MEEP_SPREAD_RULE,
                       "selection": "per key the newest row VALID on the release tree "
                                    "that carries a measurement",
                       "ratio": "route median over the best unstruck MEEP reference "
@@ -1348,20 +1456,36 @@ def _variance_status(record: Mapping[str, Any]) -> str:
 
 
 def render_table(table: Mapping[str, Any]) -> str:
+    rules = table["rules"]
     out = [f"# Identical-case table, {table['architecture']}", "",
            "Every figure is a median over a row's passes, read from the row records; "
-           "each carries its gate status. " + table["rules"]["meep"] + ".", "",
-           "| case | cells | tier | route | median | gate | MEEP best | median | ratio | enters "
-           "| variance |",
-           "|---|---|---|---|---|---|---|---|---|---|---|"]
+           "each carries its gate status. " + rules["meep"] + ".", ""]
+    if rules.get("gate_rule"):
+        out += ["The gate: " + rules["gate_rule"] + ". "
+                + rules.get("pre_r33", "")[:1].upper() + rules.get("pre_r33", "")[1:]
+                + ".", ""]
+    # THE FUSED LEG'S window spread per pass: what every record keeps (a pass collected
+    # since R33 keeps every leg's, under ``window_spreads`` in the JSON).
+    out += ["| case | cells | tier | route | median | gate | between passes "
+            "| fused window spreads | MEEP best | median | MEEP between passes | ratio "
+            "| enters | variance |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+
+    def share(value: Optional[float]) -> str:
+        return "n/a" if value is None else f"{100.0 * value:.2f} %"
+
     for row in table["rows"]:
         best = row["meep"].get(row["meep_best"]) if row["meep_best"] else None
         for name, leg in sorted(row["gpu"].items()):
             ratio = row["ratios"].get(name) or {}
+            windows = " / ".join(share(p.get("spread")) for p in leg.get("passes") or ())
             out.append(
                 f"| {row['case']} | {row['cells']:,} | {row['tier']} | {name} | "
-                f"{leg['median']} | {leg['gate']} | {row['meep_best']} | "
-                f"{best['median'] if best else None} | {ratio.get('ratio')} | "
+                f"{leg['median']} | {leg['gate']} | "
+                f"{share(leg.get('between_pass_spread'))} | {windows or 'n/a'} | "
+                f"{row['meep_best']} | {best['median'] if best else None} | "
+                f"{share(best.get('between_pass_spread')) if best else 'n/a'} | "
+                f"{ratio.get('ratio')} | "
                 f"{'yes' if ratio.get('enters') else 'no'} | {row['variance']} |")
     if table["missing"]:
         out += ["", f"Keys without a valid row: {len(table['missing'])}"]

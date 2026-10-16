@@ -1720,9 +1720,11 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
     (owner ruling R24).
   - L3 on any host but the two that cut its record (each row checks the MEEP images'
     SHA-256).
-  - Any timing or speed. The 1.0 timing (CERT-8) follows in a documentation update after the
-    release; 1.0 ships the 2026-09-21 dispatch-preference records; the Apple medians of that
-    update carry their gate status (owner rulings R20, R25).
+  - Any timing or speed. The 1.0 timing (CERT-8) is not part of certification: it ran on
+    2026-10-16 on the release's bytes, and its figures, each with its gate status under owner
+    ruling R33, are in `docs/guides/will-it-help.md` (owner rulings R20, R25, R32, R33); 1.0.0
+    ships the 2026-09-21 dispatch-preference records, and the records the 1.0 timing cut land
+    in a later 1.0.x release.
   - A must-diverge null for the held Metal seam (R29), and a board figure for the CUDA table
     composing without Triton.
   - The records this round's tools did not re-cut, carried unchanged (`BIND27N`):
@@ -1731,10 +1733,12 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
     (refused; admission does not read it), two Triton entries with a declared mixed policy,
     one CUDA weld never seeded and two Triton device-gate keys never seeded. The 35 pending
     ids that stay are declared with the step that removes each.
-- **Owed after this round.** CERT-7, the suites per environment on the release tip; CERT-8,
-  the timing.
+- **Owed after this round.** CERT-7, the suites per environment on the release tip. CERT-8,
+  the timing, ran on 2026-10-16 (`docs/guides/will-it-help.md`).
 - **The bit-parity coverage board** is re-cut on entries 01 to 175 (`176-BOARD`; its subjects
   had moved after `170-BOARD14`). (a) to (c) do not move. (d) device identity and (e)
   CERTIFIED land with this round's records: CUDA 53 / 53 under keep and under flush, Triton
   53 / 56 under keep and 0 / 56 under flush (no module's pinning entry carries a live run
   under flush, by the board's rule), Metal 74 / 74 under flush; each was 0 before them.
+  It is re-cut again on entries 01 to 178 (`179-BOARD`; entry 177's timing cutters moved
+  its outcome subject), and no cell moves.

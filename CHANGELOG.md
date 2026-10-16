@@ -73,17 +73,51 @@ holding another user's idle process may be shared, by opt-in, and is yielded the
 owner needs it (owner ruling R28). A new GPU runs the same chunks with `--new-device`, and
 its bind adds records and re-points no board.
 
-### Timing: modular, and after the mint
+### Timing: the 1.0 timing round (CERT-8), on these bytes
 
 The timing round (CERT-8) is modular in the same way: its unit is a row
 (`parity/meep_gpu/rounds/1.0/cert8.py`, `parity/meep_gpu/timing_rows.py`), any row can be
 timed again at any time, and every table and record is cut by tool from the newest valid row
-of each key, in one reference environment per cut. **The CERT-8 timing of these bytes
-follows the mint** (owner ruling R25): 1.0 is published from the fully fixed, certified runs
-without waiting for timing, which changes no code. It ships the 2026-09-21
-dispatch-preference records; the timing lands after the mint as a documentation update, and
-new preference records as a records update. Until then every timing figure in the manual is
-the dated measurement it names, on earlier bytes.
+of each key, in one reference environment per cut. It is not part of certification: it ran
+after the certification round, on the certified bytes of this release, and the documentation
+update that states it moves no package file (owner rulings R25 and R32). It ran on
+2026-10-16 on one NVIDIA host and one Apple laptop, with MEEP re-timed in the same session as
+the GPU on each (owner ruling R5), against each platform's reference MEEP 1.33.0 (single
+precision, no floating-point contraction, a portable binary). Per step, on one 3-D case (a
+dielectric sphere under PML, one flux monitor, the same simulation on both sides):
+
+- **NVIDIA, one RTX A6000 (compute capability 8.6)**, against MEEP at its fastest rank
+  count on the host's 48 cores: the Triton route 1.65×, 3.98× and 5.04× at 512,000,
+  2,097,152 and 7,077,888 cells, the CUDA-only route 1.45×, 4.59× and 5.81×; all six of
+  record.
+- **Apple, one M1 Max (`applegpu_g13s`)**, against MEEP at 8 ranks: 0.82×, 1.21×, 1.69×,
+  2.40× and 2.72× from 110,592 to 7,077,888 cells, all five of record under the gate of
+  owner ruling R33, which was ruled after the runs had been seen; under the gate in force
+  when they ran, only the 7,077,888-cell row entered.
+- **End to end**, derived from the lift and the step rates and leaving out the GPU's own
+  cost of its first steps: the lift, which reads MEEP's stored permittivity in bulk, took
+  7.4, 19.5 and 48.5 s on the NVIDIA Triton route, and the GPU run is ahead of MEEP after
+  about 5,900 steps at 512,000 cells and about 460 at 7,077,888 (at 2,097,152 cells the lift
+  is shorter than MEEP's own start-up); on the Apple laptop the lift took 1.6 to 27.9 s
+  and the break-even falls from about 21,800 steps at 262,144 cells to about 2,700 at
+  7,077,888.
+- **The gate (owner ruling R33)**: a GPU median enters when its pass medians spread by at
+  most 5 %. Each pass's window spread is recorded, and no table gates on it; as a gate it had
+  struck 6 of 8 Apple medians whose pass medians agreed within 0.16 to 2.44 %. MEEP's
+  spread is recorded and never gated.
+- **Fused products against the single arms they replace**, per step on the NVIDIA tables:
+  median 0.62× over 46 cases at or below 110,592 cells, and a plan holding two fused pairs
+  crosses its single arms between 2.4 and 5.4 million cells.
+- **The dispatch-preference records stay at 2026-09-21** in 1.0.0. The records the 1.0
+  timing cut land in a later 1.0.x release, as package data the dispatch-preference consult
+  reads.
+- **What these figures license**: one machine per platform, this one case, single precision
+  on both sides, MEEP at the rank counts timed. No figure per watt, and none for another
+  GPU: no other GPU has been timed.
+
+`docs/guides/will-it-help.md` has every figure with its conditions and licence,
+`docs/guides/kernel-dispatch.md` the fused products, and `docs/development/timing.md` the
+gate and the comparison with the round's first timing, of 2026-10-13.
 
 ### Results of record: the 1.0 certification round
 
@@ -160,6 +194,157 @@ stands wherever every file its import record names is byte-equal in the release 
   that declare a mixed policy, one CUDA weld and two Triton device-gate keys never seeded.
   35 entries of `tools/ci/pending_certification.txt` stay declared after the records
   entry, each with the step that removes it.
+
+### The bit-parity coverage board is re-cut on series entries 01 to 178: no cell moves
+
+`parity/meep_gpu/build_parity_board.py` cut the board in `parity/meep_gpu/parity_board/`
+again, on base + series 01..178: entry 177's timing cutters and their tests are files of its
+outcome subject, so its check refused; entry 178 changes Markdown only. Only three of its
+generated files change (`board.json`, `board.md`, `outcomes.json`); the generator is
+unchanged. Its test outcomes are the CUDA and Triton test files' cases of the package suite
+(CPU-only shim, every marker, dispatch off) and the Metal test files' cases of the device run
+(Apple GPU), both run in the Mac reference environment on this tree's outcome subject: 216 test
+files, 0 not run, 12,137 cases, per file equal to entry 176's on 216 of 216.
+`dev_evidence.json` is carried unchanged: each of its 11 records is still on its live subject.
+
+- **No cell moves** (N / D, refused rows in brackets), 0 transitions: CUDA (a) 55 / 55 (+1),
+  (b) 57 / 57 (+8), (c) 18 / 18 (+47), (d) and (e) 53 / 53 (+12) under keep and under flush;
+  Triton 55 / 56 (+2), 61 / 61 (+7), 27 / 29 (+39), (d) and (e) 53 / 56 (+12) under keep and
+  0 / 56 (+12) under flush; Metal 60 / 60 (+4), 68 / 68 (+9), 29 / 29 (+48), (d) and (e)
+  74 / 74 (+3) under flush. The array path against MEEP reads 6 / 6 families identical (+4
+  refused) under keep and under flush.
+- **The suites**, Apple M1 Max, Mac reference environment, every marker, dispatch off: the
+  package suite under the CPU-only shim 33 failed, 15,001 passed, 1,031 skipped, every failure
+  declared; the 96 device-visible files on the Apple GPU 1 failed, 4,187 passed, 331 skipped,
+  the failure declared. Per id against entry 176's suites, 16,065 of 16,065 package ids read
+  the same outcome, and 4,515 of the 4,515 device ids the two runs share; the device run's 1
+  gone and 4 new ids are all in `test_cut_timing_record.py` (entry 177's), which the board
+  does not carve.
+- Of the board's 12,062 leaves 8 move: the build and record times, the two reports' names and
+  digests, the outcome subject manifest and the board subject. Outcome subject
+  `5baac1faf50bc87b` (1,152 files), board subject `41da12d02fcae9e7` (1,163 files).
+
+### The 1.0 timing (CERT-8) is stated from its records: both platforms' identical-case tables under the gate of owner ruling R33, the lift and the break-even, and the fused products
+
+The pages that state the release's speeds now state the 1.0 timing, which ran on these bytes on
+2026-10-16 on one NVIDIA host (one RTX A6000) and one Apple laptop (one M1 Max), with MEEP
+re-timed in the same session as the GPU on each. Every figure is read from the round's
+records, whose tables were cut by tool from the stored rows under the gate of owner ruling
+R33; nothing was timed for this entry. No package file moves.
+
+- **`docs/guides/will-it-help.md`**: "The comparison with MEEP" is the 1.0 timing. On the
+  NVIDIA host, per step, the Triton route and the CUDA-only route against MEEP's fastest rank
+  count, with the array path beside them (six GPU ratios of record, 1.45× to 5.81×), every
+  condition, MEEP's rate at each rank count and the controls of the same session (ranks bound
+  to hardware threads, cost-based chunk splitting, and MPI ranks with OpenMP threads, which
+  measured up to 2.7 % above MEEP's fastest pure-MPI count and are struck by a defect of the
+  timing harness: the ratios of record stay against pure MPI, and the page gives both). On the
+  Apple laptop, the Metal route against MEEP at 8 ranks at five sizes (0.82× to 2.72×, all of
+  record under the new gate) with the array path and MEEP at each rank count, and the
+  Metal-only supplement rows. A section states the gate, that it replaced the window-spread
+  gate after the 2026-10-16 runs had been seen, why, and what each gate admits on both dates;
+  another compares the round's first timing (2026-10-13) in summary. "Short runs" states the
+  lift (now the bulk permittivity read), MEEP's start-up, the break-even step count on both
+  machines and the case run to its own end time on the NVIDIA host, all derived and kept apart
+  from the per-step figures, without the GPU's own first-step cost. The guidance table, the
+  two-dimensional section, the array path off the supported range and "What has not been
+  measured" are brought to the same figures.
+- **The MEEP build is named on every MEEP figure**: MEEP 1.33.0 as each platform's reference
+  environment builds it (owner ruling R27; single precision, `-O2 -ffp-contract=off
+  -fno-fast-math`, a portable binary, Open MPI 5.0.8 with OpenMP on Linux and 5.0.10 on
+  macOS). On the NVIDIA host the build the round's first timing used was timed again after
+  the session, MEEP alone, and agrees within 0.3 % at MEEP's fastest rank count at
+  2,097,152 and 7,077,888 cells; no such bridge ran on the Apple laptop.
+- **`docs/guides/kernel-dispatch.md`**: "What fusing buys" states the 1.0 fused products
+  against the single arms they replace (median 0.62× over 46 cases, two-pair plans ahead on
+  0 of 34, and the crossover band between 2.4 and 5.4 million cells, where the 2026-09-21
+  campaign had placed it between 1.0 and 2.4 million); the Metal section states the 1.0 Apple
+  figures in place of the 2026-09-25 median; bit identity at size counts the 1.0 comparison's
+  GPU rows. `docs/guides/capability-coverage.md`, `docs/guides/validation-and-performance.md`,
+  `docs/guides/index.md` and `docs/development/execution-backends.md` follow.
+- **`docs/development/timing.md`** gains "The 1.0 timing against 2026-10-13": both machines
+  row by row, with what can be attributed (on the NVIDIA host the denominator held, and the
+  512,000-cell gain, a fixed cost of about 0.14 to 0.15 ms per step, is attributed to the
+  skipped deposit of a silent source by inference only) and what cannot (on the Apple laptop
+  three things changed at once), the 2026-10-13 rows under each gate, and on which trees the
+  2026-10-16 rows stay valid (those whose files match what the rows' processes imported; no
+  timed process imported the cutters).
+- **The dispatch-preference records stay at 2026-09-21** in 1.0.0, and every page that names
+  them says so: the records the 1.0 timing cut land in a later 1.0.x release, because they
+  are package data the dispatch-preference consult reads.
+- **The release notes' timing section** states the headline figures with their gate status;
+  `README.md`, `docs/development/certification.md` and section 12 of
+  `parity/meep_gpu/rounds/1.0/PRE_CERTIFICATION_STATE.md` no longer say that the timing
+  follows. The release date stays 2026-10-16 in the heading above and in `CITATION.cff`.
+- Each of the files this entry changes is in the run closure of 0 of the 250 gate and probe
+  scripts (`import_closure.py bill`) and named by no pin of the four ledgers.
+
+### The timing cutters read every row by owner ruling R33; the bench that writes the rows is unchanged
+
+Owner ruling R33 (2026-10-16) moves the 5 % gate of the CERT-8 timing from the spread of a
+leg's timed windows inside one pass to the spread of its pass rates across a row's passes. It
+was ruled after the 2026-10-16 runs had been seen: on the Apple run the window floor struck 6
+of 8 GPU medians whose passes reproduced to 0.16-2.44 %. This entry lands the half of the
+change that cuts tables and records (owner ruling R34); the half that writes rows moves to
+1.0.1, so no stored row goes stale.
+
+- **The rule, as every cut now applies it.** A GPU leg (each route, and the array control)
+  enters when no pass of it is struck by another check and the spread of its pass rates,
+  (max − min) / median over the row's passes, is at most 5 %. The within-pass window spread
+  is recorded and no cut gates on it. MEEP's pass spread is recorded and never gated, as
+  before. The quiet window, the variance precondition, the watcher, and the identity and
+  dispatch checks are unchanged.
+- **`parity/meep_gpu/timing_rows.py`** re-derives every leg of the identical-case table from
+  the passes its record stores, never from the status it was collected with: a pass struck
+  on the bench's window floor alone (`spread_within_gate`) reads unstruck, a strike naming
+  another floor as well keeps that floor, and every other strike stands. Each table prints a
+  leg's between-pass spread, the fused leg's window spread per pass and MEEP's between-pass
+  spread, and states the rule and its limit.
+- **`parity/meep_gpu/cut_timing_record.py`** neither requires nor gates on the window floor.
+  The admitted rows of one case and grid shape, on one deposit-repair program and timed by
+  one instrument (window count and target), are that point's passes; two or more enter only
+  when their fused and their baseline rates agree within 5 %. A record so cut stamps
+  `cut.gate` (`between_pass`); a record with no stamp was cut by the window floor, and
+  `--check` recomputes each record by the rule it was cut by.
+  **`parity/meep_gpu/build_fused_timing_report.py`** re-derives `reportable` from the floors
+  that gate. `docs/development/timing.md` gains "The gate of record (R33)".
+- **The bench is unchanged in 1.0.0.** `bench_fused_products.py` and `gpu_array_control.py`
+  still count `spread_within_gate` among a row's floors and still mark such a row
+  `TIMED-NOT-REPORTABLE`; the cutters read past that floor. Both files are in the import
+  records of the rows they wrote (`bench_fused_products.py` in 135 of the 135 rows the
+  2026-10-16 round stored, `gpu_array_control.py` in 11), so changing them would make every
+  stored row stale and owe it a re-time (`timing_rows.py bill`: 8 of 8 Apple keys, 127 of
+  127 NVIDIA keys). Their change, which records the window spread beside the floors rather
+  than among them, moves to 1.0.1 with the bench tests that read it. Of
+  `test_bench_fused_products_metal.py` only the report-builder tests land here. The
+  recorder's limit therefore holds for rows collected on 1.0.0 too: the ladder stops at a
+  row's first strike, so for a pass struck on the window floor it never evaluated the later
+  checks (what the route launched, a GPU-only row's identity row, the deposit-repair route,
+  the host conditions). The 2026-10-16 passes that R33 reads unstruck were audited from the
+  ladder ledgers instead: 0 of the 17 on the Apple run fail a skipped check, and the NVIDIA
+  run had none (0 of its 18 timed GPU passes carried a window-only strike).
+- **Measured on this tree**, nothing re-timed:
+  - **The timing tool owes nothing.** `timing_rows.py status`, with this tree as the release
+    root, reads every key newest valid and owed nothing: the Apple rows 8 of 8 (5 of the
+    release catalog, 3 of the GPU-only supplement) and the NVIDIA rows 127 of 127, with 0
+    catalog keys lacking a row. `cert8.py plan --owed` plans 0 keys on both Apple stores. The
+    7 files of the cutter half are in 0 of the 135 rows' import records, and
+    `timing_rows.py bill` of them re-times 0 of 8 and 0 of 127 keys.
+  - **The shipped cutters re-cut the R33 tables byte for byte**, 18 of 18 outputs: the Apple
+    identical-case tables of the release catalog and of the GPU-only supplement with their
+    status reads, the NVIDIA identical-case table with its status read, the R33
+    dispatch-preference cuts (Triton 67 of 67 rows admitted, CUDA 29 of 57) and the
+    fused-product report (74 rows, 46 with a fusion number). Those dispatch-preference cuts
+    are not shipped: 1.0.0 keeps the 2026-09-21 records.
+  - **The shipped records still recompute.** `cut_timing_record.py --check` recomputes the
+    2026-09-21 records byte for byte: Triton `965317c136ad` (69 rows from 17 files) and CUDA
+    `cff4bdae8f80` (65 rows from 12 files).
+  - **Tests** (Apple M1 Max, Mac reference environment, dispatch off): the timing and bench
+    test files 255 passed, 2 skipped, 0 failed of 257; the harness suite (`parity/meep_gpu`)
+    2,800 passed, 16 skipped (a declared resource), 0 failed of 2,816.
+  - **Bill.** `import_closure.py bill`: the 8 files this entry changes (the cutter half and
+    this changelog) are in 0 of 250 gate and probe closures. No ledger pins any of them, and
+    no package file moves.
 
 ### The bit-parity coverage board is re-cut on series entries 01 to 175: the certification columns land
 
@@ -286,9 +471,9 @@ entry turned green (`test_metal_kernels.py` 1, `test_metal_weld_contract.py` 6,
   cannot bite, and the held seam's evidence is `residency-verify-after-every-sync_out` and
   byte identity.
 - **Timing (owner ruling R25)**: the pages that state the release's speeds (`README.md`,
-  "Will it help?", "Compiled-kernel dispatch", the capability checklist) say the figures
-  were measured on earlier bytes and that the 1.0 timing (CERT-8) follows in a
-  documentation update after the release, "Will it help?" and "Compiled-kernel dispatch"
+  "Will it help?", "Compiled-kernel dispatch", the capability checklist) said the figures
+  were measured on earlier bytes and that the 1.0 timing (CERT-8) was still to come (the
+  timing entry above now states it), "Will it help?" and "Compiled-kernel dispatch"
   also that 1.0 ships the 2026-09-21 dispatch-preference records; the other speed statements are dated and carry their own
   licence, and per-step figures stay apart from end-to-end ones.
 - **`docs/development/certify-a-new-gpu.md` against this round's own commands**: a shared
@@ -307,7 +492,7 @@ entry turned green (`test_metal_kernels.py` 1, `test_metal_weld_contract.py` 6,
   measured sizes of the two environments (8.9 GiB and 2.0 GiB) and the Mac build's jobs; the
   steps this round ran (CERT-1 to CERT-5; CERT-7 is owed); the release notes' sentence on a
   new GPU, which now claims nothing about an H200 or an M3; the comparisons with MEEP, stated
-  by date (one on 2026-09-28; none on Apple hardware has produced a figure of record) and the
+  by date (one on 2026-09-28; none on Apple hardware had then produced a figure of record) and the
   one Apple median with its gate status; and "Will it help?"'s row on complex fields, which
   dispatch by default in 1.0. The certify page states its family re-certification recovery as
   read from the tools' code; the held-residency paragraph of `certification.md` states what the

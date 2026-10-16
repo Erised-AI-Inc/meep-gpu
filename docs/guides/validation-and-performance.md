@@ -167,8 +167,9 @@ the certified single arms they replace are measured separately; the figures and
 the size dependence are in
 [Compiled-kernel dispatch](kernel-dispatch.md#what-fusing-buys-and-at-which-size).
 The short version: on the NVIDIA tables a two-pair plan loses to its own
-certified single arms below a crossover between 1.0 and 2.4 million cells, and
-the Metal table's coverage figure supports no timing claim at all.
+certified single arms below a crossover between 2.4 and 5.4 million cells
+(measured 2026-10-16, on this release's bytes), and the Metal table's coverage
+figure supports no timing claim at all.
 
 The timing harness that produced those rows ships in the repository under
 <code>parity/meep_gpu/</code>: <code>bench_fused_products.py</code> times a case

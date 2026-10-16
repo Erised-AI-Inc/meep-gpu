@@ -111,8 +111,9 @@ worth knowing where that evidence stops.
   in <code>tables.cuda.chunk_division</code>.
 - **A dispatched plan is not always the fastest one available.** On the NVIDIA
   tables fused dispatch beats the array path at the measured 2-D sizes, but it
-  loses to the certified single-arm kernels below a crossover between 1.0 and
-  2.4 million cells. Nothing yet arbitrates between the two
+  loses to the certified single-arm kernels below a crossover between 2.4 and
+  5.4 million cells (measured 2026-10-16, on this release's bytes). Nothing yet
+  arbitrates between the two
   ([What fusing buys](#what-fusing-buys-and-at-which-size)).
 - **On an Apple host the default wins only on larger grids.** Small grids run
   faster built with <code>prefer_gpu=False</code>, or with
@@ -386,8 +387,10 @@ The largest route case is 110,592 cells. The timing ladders add a check at
 size: 16 of 16 rows on each of the two NVIDIA ladders (2026-09-22 and
 2026-09-26; two kernel tables at 8 sizes) and 7 of 7 on the Apple ladder were
 bit-identical to the array path, up to 11,239,424 cells, over 58 to 4,000 steps
-per row; so were 18 of 18 GPU rows of the comparison with MEEP in
-[Will it help?](will-it-help.md) (two routes at three sizes, three passes).
+per row. On this release's bytes, so were the GPU rows of the 1.0 comparison with
+MEEP in [Will it help?](will-it-help.md) (2026-10-16): 18 of 18 on the NVIDIA host
+(two routes at three sizes, three passes) and, on the Apple laptop, 41 of 41 of
+the rows that carry a verdict, up to 7,077,888 cells.
 
 Each gate's own record states what it covers: "the arms listed under
 <code>arms_driven</code>, on the exact configurations listed under
@@ -401,34 +404,44 @@ products. **It is not a win at small grid sizes on the NVIDIA tables**, and the
 numbers below say so. The speed of a dispatched run comes from the kernels;
 fusing is reported as coverage.
 
-The measurement was made on 2026-09-21 on one NVIDIA host: 109 route cases
-attempted, 61 timed cleanly, 36 of those carrying a fusion number whose control
-ran the same kernel table. Monitors are detached and the window is the step
-loop, so every figure below is per step, not end to end. It was made on earlier
-bytes than this release's: 1.0 ships the 2026-09-21 dispatch-preference records,
-and the 1.0 timing (CERT-8) follows in a documentation update after the release.
+The measurement of record was made on 2026-10-16 on one NVIDIA host, on this
+release's bytes (the 1.0 timing): 74 route cases, 37 per NVIDIA table, all 74 timed
+cleanly under the timing check of record, 46 of them carrying a fusion number whose
+control ran the same kernel table. Monitors
+are detached and the window is the step loop, so every figure below is per step,
+not end to end. 1.0.0 ships the 2026-09-21 dispatch-preference records, cut from an
+earlier campaign on a development tree. The records this measurement cut land in a
+later 1.0.x release: they are package data, which the dispatch-preference consult
+reads (it is not wired into dispatch in 1.0), and a documentation update moves no
+package file.
 
 **Against the certified single arms the fused products replace** — the
-comparison that measures fusing — the median is **0.52x over 36 cases**, ahead on
-**3 of 36**. Split by plan: a plan holding two fused pairs is ahead on **0 of
-28**, spanning 0.40x to 0.72x; a plan holding one fused pair is ahead on **3 of
-8**, spanning 0.48x to 1.09x.
+comparison that measures fusing — the median is **0.62x over 46 cases**, ahead
+on **6 of 46**. Split by plan: a plan holding two fused pairs is ahead on
+**0 of 34**, spanning 0.42x to 0.73x; a plan holding one fused pair is ahead on
+**6 of 12**, spanning 0.63x to 1.08x. The 28 cases without a fusion number are
+hand-written CUDA rows whose single arms ran on the Triton table: outside the two
+real-PML single seams the CUDA table adopts, it offers no single arm of its own,
+so the ratio would compare two tables.
 
-**Against the array path** the fused step is faster on 61 of 61 cleanly timed
-rows, from 1.53x to 8.41x — but this column is *not* the fusion's speedup: the
-array path is the reference the arithmetic is proved against, not the baseline
-the product replaces.
+**Against the array path** the fused step is faster on 74 of 74 cleanly timed
+rows, from 1.37x to 12.76x — but this column is *not* the fusion's speedup: the
+array path is the reference the arithmetic is proved against, not the baseline the
+product replaces.
 
 **Size is the reason.** 40 of the 44 distinct pairs of case and grid sit at or
 below 25,000 cells and the largest is 110,592, the regime a fixed per-step host
-cost dominates. A separate size sweep, moving only the grid, shows the two-pair
-fused step flat at 0.80 to 0.97 ms per step from 24,000 to 1,014,000 cells and
-crossing its single arms between **1,014,000 and 2,400,000 cells** on 4 of 4
-sweeps, two on each NVIDIA table. At 2,400,000 cells it reads 1.027x on both
-hand-written CUDA sweeps and 1.067x and 1.069x on the Triton sweeps. A one-pair
-plan on a clean seam alternates around its single arms, ahead at 3 of 4 swept
-sizes (1.055x, 1.048x, 0.975x and 1.001x at 24,000, 1,014,000, 2,400,000 and
-5,400,000 cells).
+cost dominates. A separate size sweep, moving only the grid of two 2-D cases on
+each NVIDIA table (two passes per size), shows the two-pair fused step flat at
+0.74 to 0.88 ms per step from 24,000 to 2,400,000 cells and crossing its single
+arms between **2,400,000 and 5,400,000 cells** on 4 of 4 sweeps: at 2,400,000
+cells it reads 0.72x and 0.74x on the hand-written CUDA sweeps and 0.72x and 0.75x
+on the Triton sweeps, and at 5,400,000 cells 1.034x and 1.036x, and 1.023x and
+1.026x. A one-pair plan on a clean seam (Triton, off-diagonal) is ahead at every
+swept size, 1.01x to 1.09x. The 2026-09-21 campaign, on an earlier tree, placed the
+crossover between 1,014,000 and 2,400,000 cells; the 1.0 code's single arms are
+faster (at 2,400,000 cells the hand-written CUDA single arms of one sweep step in
+0.58 ms against 1.33 ms then), so the band is one higher.
 
 Where the fixed cost comes from: a fused pair that owns the seam a source is
 injected on is bracketed by a repair that saves the affected cells before the
@@ -645,18 +658,19 @@ re-cut from that campaign, and the coverage board. One of the route gate's
 residency controls cannot bite under a hold, and the evidence for the held seam is
 another control and byte identity
 ([The Metal route campaign](../development/certification.md#the-metal-route-campaign)).
-The timings below were measured on earlier bytes than this release's; the 1.0
-timing (CERT-8) follows in a documentation update after the release.
+The 3-D figures below are the 1.0 timing (2026-10-16), on this release's bytes;
+the small-grid figures are an earlier measurement on a loaded host (2026-09-27).
 
 Which path is faster depends on the grid, so choose deliberately:
 
 - **Large 3-D grids: keep the default.** On one Apple M1 Max, the 3-D PML case
-  at 7,077,888 cells with one flux monitor attached reads 1,141.9 Mcell-steps/s
-  under held dispatch against 34.3 on the array path, bit-identical (measured
-  2026-09-25 with <code>held</code> set by name, before it became the default; the
-  row passed that ladder's 5 % spread gate). No comparison with MEEP on the identical
-  problem on Apple hardware has produced a figure of record
-  ([Will it help?](will-it-help.md)).
+  at 7,077,888 cells with one flux monitor attached reads 1,363.2 Mcell-steps/s
+  under held dispatch against 20.7 on the array path, bit-identical, and 2.72
+  times the reference MEEP's rate at 8 ranks on the same laptop, per step. From
+  512,000 cells up the default runs 1.69 to 2.72 times MEEP's rate there, and at
+  110,592 cells 0.82 times; every one of these medians passed the timing check of
+  record, which was ruled after the runs were seen
+  ([On one Apple M1 Max](will-it-help.md#on-one-apple-m1-max)).
 - **Small grids: lift with <code>prefer_gpu=False</code>, or set
   <code>MEEP_GPU_DISPATCH=0</code>.** Both step the same array path on the
   host CPU. At 3,600 cells, Ez after 200 steps was bit-identical between the

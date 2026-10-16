@@ -1151,7 +1151,10 @@ def _nvidia_row(case, vs_singles, table="triton"):
 
 
 def _metal_row(case, fused_ms=30.0, singles_ms=60.0, array_ms=0.6, cells=(200, 120, 1),
-               reportable=True, smoke=False, on_ac=False, mirrors=45):
+               reportable=True, smoke=False, on_ac=False, mirrors=45, window_floor=None):
+    """A Metal bench row. ``reportable=False`` fails a floor that gates; ``window_floor``
+    adds the window floor a row written before R33 carried (``spread_within_gate``),
+    and when False marks the row not reportable as the bench then did."""
     per = {leg: {"median_seconds_per_step": ms / 1e3, "launches_per_step": lps,
                  "compiled_calls_per_step": lps,
                  "residency_syncs_per_step": ({"in": lps, "out": lps} if lps else None)}
@@ -1162,9 +1165,12 @@ def _metal_row(case, fused_ms=30.0, singles_ms=60.0, array_ms=0.6, cells=(200, 1
             "composition": {"tables_dispatched": ["metal"]}}
     floors = {"substitution_proved": True, "bit_identical": True,
               "moved_words_positive": True, "non_finite_zero": True,
-              "no_compiles_inside_timed_region": True,
-              "spread_within_gate": reportable, "singles_are_the_same_table": True,
+              "no_compiles_inside_timed_region": reportable,
+              "singles_are_the_same_table": True,
               "windows_launched_at_the_proved_rate": True}
+    if window_floor is not None:
+        floors["spread_within_gate"] = window_floor
+        reportable = reportable and window_floor
     host = {"model": "MacBookPro18,2", "cpu": "Apple M1 Max", "on_ac_power": on_ac,
             "power_source": "AC Power" if on_ac else "Battery Power",
             "low_power_mode": not on_ac, "loadavg": [2.5, 2.0, 1.5],
@@ -1257,9 +1263,25 @@ def test_a_metal_row_is_not_a_smoke_row_unless_it_says_so():
 def test_a_metal_row_that_failed_a_floor_gets_no_ratio_and_is_named():
     rows = [_metal_row("pml_2d"), _metal_row("noisy_2d", reportable=False)]
     text = report.render(rows, "t")
-    assert "- **spread_within_gate** (1): `noisy_2d`" in text
+    assert "- **no_compiles_inside_timed_region** (1): `noisy_2d`" in text
     assert "| `noisy_2d` |" not in text
     assert "Median **2.00x** over 1 case" in text
+
+
+def test_a_row_struck_for_its_window_spread_alone_before_r33_reads_reportable():
+    """R33: the window floor gates nothing, so a row the bench marked not reportable for
+    it alone (written before R33) renders as one written after: tabled, in the median,
+    and named under no floor. One whose window floor and another floor failed is named
+    under the other one only."""
+    jitter = _metal_row("jitter_2d", window_floor=False)
+    assert jitter["reportable"] is False and jitter["verdict"] == "TIMED-NOT-REPORTABLE"
+    both = _metal_row("both_2d", reportable=False, window_floor=False)
+    text = report.render([_metal_row("pml_2d"), jitter, both], "t")
+    assert "| `jitter_2d` |" in text and "| `both_2d` |" not in text
+    assert "Median **2.00x** over 2 cases" in text
+    assert "spread_within_gate" not in text
+    assert "- **no_compiles_inside_timed_region** (1): `both_2d`" in text
+    assert report.reportable(jitter) and not report.reportable(both)
 
 
 def _contended(row, when="host_before"):

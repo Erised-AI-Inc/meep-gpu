@@ -23,7 +23,10 @@ ADMITTED only if
 
 1. its verdict is ``TIMED`` and it passed EVERY floor the bench records, the same-table
    control among them -- a control served by another kernel table compares two tables,
-   not a product with what it displaces. A floor that was never recorded did not pass;
+   not a product with what it displaces. A floor that was never recorded did not pass.
+   The within-pass WINDOW spread is no floor (owner ruling R33, 2026-10-16): a row
+   written before it carries ``spread_within_gate`` among its floors and is read as if
+   it did not, and the gate is the BETWEEN-PASS spread (below);
 2. its plan was SERVED by the record's table alone (``substitution.tables_dispatched``,
    what actually dispatched, beside ``drive_table``, which is what was asked for). A
    plan whose slots two tables served is not a measurement of either one's plan: a
@@ -39,6 +42,20 @@ ADMITTED only if
 5. it records which ``deposit_repair.py`` it timed.
 
 Everything else is left out BY NAME, in the record (``excluded``) and the report.
+
+THE BETWEEN-PASS GATE (R33). The admitted rows of one case and grid shape, on one
+deposit-repair program and timed by one instrument (window count and target), are that
+point's passes: a sweep point's p1 and p2, never a DRIVE unit beside them. When there are two or more, the spread of their fused and of their
+baseline rates, (max - min) / median, must be at most 5 % on each leg, or every row of
+the point is left out by name: a figure is a median of pass medians, and medians that
+do not reproduce are not one. A point timed once (a DRIVE row) has no between-pass
+spread and is not struck by it; the record's own ``min_rows`` still keeps such a size
+from setting a band edge. Each row's window spreads stay in the record
+(``fused_spread`` / ``baseline_spread``) and in the veto margin, which is
+``dispatch_preference``'s rule and no admission gate. A record cut by this rule stamps
+``cut.gate`` (``between_pass``); a record with no stamp was cut by the window floor,
+and ``--check`` recomputes each by the rule it was cut by, so the 2026-09-21 records
+recompute byte for byte.
 
 =============================================================================
 ONE RECORD, ONE PROGRAM
@@ -160,11 +177,23 @@ CUT_BY = "parity/meep_gpu/cut_timing_record.py"
 #: median; two is the least that can disagree.
 MIN_ROWS_PER_KEY = 2
 
-#: The floors ``bench_fused_products.run_case`` records. All seven, by name: a row
-#: written before one of them existed did not pass it.
+#: The floors ``bench_fused_products.run_case`` recorded until owner ruling R33. All
+#: seven, by name: a row written before one of them existed did not pass it. What a
+#: record cut by the window rule (:data:`WINDOW_GATE`, every record cut before R33)
+#: requires.
 REQUIRED_FLOORS = ("substitution_proved", "bit_identical", "moved_words_positive",
                    "non_finite_zero", "no_compiles_inside_timed_region",
                    "spread_within_gate", "singles_are_the_same_table")
+#: The bench floor that read a leg's within-pass window spread: no floor under R33.
+WINDOW_FLOORS = ("spread_within_gate",)
+#: The floors a record cut by the between-pass rule requires: the six that gate.
+REQUIRED_FLOORS_R33 = tuple(name for name in REQUIRED_FLOORS if name not in WINDOW_FLOORS)
+#: The two rules a record may be cut by, as ``cut.gate`` names them. The window rule is
+#: never stamped: every record cut before R33 carries no ``gate`` and recomputes by it.
+WINDOW_GATE, BETWEEN_PASS_GATE = "window", "between_pass"
+GATES = (WINDOW_GATE, BETWEEN_PASS_GATE)
+#: The between-pass spread a point's passes may show (R33): the 5 % gate.
+BETWEEN_PASS_MAX = 0.05
 
 #: Sources whose digest is a POOLING BARRIER (with ``deposit_repair``, which the route
 #: carries): they emit the fused kernels a row times. Scoped per table and spelled in
@@ -301,25 +330,33 @@ def contended(row: Mapping[str, Any], require_after: bool = False) -> Optional[s
     return "contended -- " + "; ".join(marks) if marks else None
 
 
-def _floor_refusal(row: Mapping[str, Any]) -> Optional[str]:
+def _floor_refusal(row: Mapping[str, Any], gate: str = BETWEEN_PASS_GATE) -> Optional[str]:
     floors = row.get("floors") or {}
-    missing = [name for name in REQUIRED_FLOORS if name not in floors]
+    window = gate == WINDOW_GATE
+    required = REQUIRED_FLOORS if window else REQUIRED_FLOORS_R33
+    missing = [name for name in required if name not in floors]
     if missing:
         return "floor not recorded: " + ", ".join(missing)
-    failed = sorted(name for name, passed in floors.items() if passed is not True)
+    # UNDER R33 THE WINDOW FLOOR GATES NOTHING: a row written before the bench moved it
+    # out of its floors is read as one written after.
+    failed = sorted(name for name, passed in floors.items() if passed is not True
+                    and (window or name not in WINDOW_FLOORS))
     if failed:
         return "floor failed: " + ", ".join(failed)
     if (row.get("substitution") or {}).get(
             "fused_and_singles_used_the_same_table") is not True:
         return ("the control did not run the same kernel table as the fused leg "
                 "(substitution.fused_and_singles_used_the_same_table)")
-    if row.get("reportable") is not True:
+    # The bench's ``reportable`` is every floor it recorded; under R33 it is re-derived
+    # from the floors that gate, read above, so a pre-R33 row's window floor is not read
+    # back through it.
+    if window and row.get("reportable") is not True:
         return "the row is not reportable"
     return None
 
 
 def admission_refusal(row: Mapping[str, Any], table: str,
-                      require_after: bool) -> Optional[str]:
+                      require_after: bool, gate: str = BETWEEN_PASS_GATE) -> Optional[str]:
     """The first reason this row may not feed a record, or None."""
     if row.get("drive_table") != table:
         return f"a row of the {row.get('drive_table')!r} table"
@@ -332,7 +369,7 @@ def admission_refusal(row: Mapping[str, Any], table: str,
         return f"verdict {row.get('verdict')}"
     if row.get("prefer_gpu") is not True:
         return "a host smoke row (prefer_gpu is not true), never a device timing"
-    refusal = _floor_refusal(row)
+    refusal = _floor_refusal(row, gate)
     if refusal:
         return refusal
     # WHAT SERVED, beside the floor's "the control ran the same table as the fused
@@ -411,6 +448,18 @@ def _policy_of(plan: Mapping[str, Any]) -> Optional[str]:
     return ((plan.get("subnormal") or {}).get("gate") or {}).get("policy_in_force")
 
 
+def instrument_of(row: Mapping[str, Any], fused_leg: Mapping[str, Any]) -> str:
+    """The timing instrument a row's fused leg was measured with, as the row records it:
+    its window count and the probe floor its window target set (``bench_fused_products.
+    size_chunk``: 0.1 of the target, at least 0.05 s). A DRIVE unit and a sweep point of
+    one case and grid shape are two instruments -- and two rows of the round, each with
+    its own passes -- so the between-pass gate never pools them (R33)."""
+    probe = (((row.get("sizing") or {}).get("fused") or {}).get("probe") or {})
+    floor = probe.get("min_seconds")
+    return (f"windows={fused_leg.get('windows')};probe_min_s="
+            f"{round(float(floor), 6) if isinstance(floor, (int, float)) else None}")
+
+
 def build_measurement(ref: Mapping[str, Any], fused_leg: Mapping[str, Any],
                       baseline_leg: Mapping[str, Any], source: str,
                       baseline_line: Optional[int] = None
@@ -447,6 +496,7 @@ def build_measurement(ref: Mapping[str, Any], fused_leg: Mapping[str, Any],
     digests = dict(row["provenance"]["sha256"])
     measurement = {
         "artifact": ref["artifact"], "line": ref["line"], "source": source,
+        "instrument": instrument_of(row, fused_leg),
         "case": row.get("case"), "utc": row.get("utc"), "grid_shape": grid_shape,
         "cells": cells, "run_shape": dict(shape),
         "fused_ms_per_step": fused[0], "fused_spread": fused[1],
@@ -468,9 +518,64 @@ def build_measurement(ref: Mapping[str, Any], fused_leg: Mapping[str, Any],
     return measurement, None
 
 
-def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool
+def _rate_spread(milliseconds: Sequence[float]) -> float:
+    """(max - min) / median of the RATES one leg's passes read (R33 spells the gate on
+    pass rates; a rate is the reciprocal of ms/step)."""
+    rates = [1.0 / value for value in milliseconds]
+    return (max(rates) - min(rates)) / statistics.median(rates)
+
+
+def between_pass(measurements: List[Dict[str, Any]], excluded: List[Dict[str, Any]]
+                 ) -> List[Dict[str, Any]]:
+    """The measurements whose point's passes agree (R33), the others left out by name.
+
+    A POINT is a case and grid shape of one source (bench or Phase 0 leg) on ONE
+    deposit-repair program -- the route identity :func:`one_program` compares, else the
+    digest of an unbracketed row -- so rows of two routes never pool here, and a
+    ``--select-route`` leaves the other route out by its own name, not by this one's --
+    timed by ONE instrument (:func:`instrument_of`), so a DRIVE unit (six 2 s windows) and
+    a sweep point at the same grid (four 1.5 s) stay two rows, as their keys are
+    (``timing_rows.fused_key``). Its admitted rows are its passes. Two or more must
+    agree within :data:`BETWEEN_PASS_MAX` on the fused leg's rate and on the baseline's,
+    or every row of the point is left out. One row has no between-pass spread and is
+    not struck by it."""
+    points: Dict[Tuple[str, str, str, str, str], List[Dict[str, Any]]] = {}
+    for measurement in measurements:
+        route = measurement.get("route")
+        program = route["id"] if route is not None else f"digest:{measurement['sha']}"
+        points.setdefault((str(measurement["source"]), str(measurement["case"]),
+                           json.dumps(measurement["grid_shape"]), program,
+                           str(measurement.get("instrument"))), []).append(measurement)
+    struck: Dict[int, str] = {}
+    for _point, members in sorted(points.items()):
+        if len(members) < 2:
+            continue
+        wide = []
+        for leg in ("fused", "baseline"):
+            value = _rate_spread([m[f"{leg}_ms_per_step"] for m in members])
+            if value > BETWEEN_PASS_MAX:
+                wide.append(f"{leg} {value:.4f}")
+        if wide:
+            reason = (f"between-pass spread over the {len(members)} passes of this case, "
+                      f"grid shape and instrument: {', '.join(wide)} > {BETWEEN_PASS_MAX} "
+                      "(R33)")
+            for member in members:
+                struck[id(member)] = reason
+    for measurement in measurements:
+        if id(measurement) in struck:
+            excluded.append({"artifact": measurement["artifact"],
+                             "line": measurement["line"], "case": measurement["case"],
+                             "reason": struck[id(measurement)]})
+    return [m for m in measurements if id(m) not in struck]
+
+
+def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool,
+           gate: str = BETWEEN_PASS_GATE
            ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
-    """``(measurements, excluded, counts)`` over every line read, duplicates dropped."""
+    """``(measurements, excluded, counts)`` over every line read, duplicates dropped,
+    under ``gate`` (:data:`GATES`): the between-pass rule applies :func:`between_pass`."""
+    if gate not in GATES:
+        raise CutRefused("unknown_gate", f"{gate!r} is not one of {GATES}")
     seen: Dict[str, Mapping[str, Any]] = {}
     unique: List[Mapping[str, Any]] = []
     for ref in lines:
@@ -493,7 +598,7 @@ def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool
             phase0.setdefault((ref["artifact"], str(row.get("case")),
                                json.dumps(row.get("grid_shape"))), []).append(ref)
             continue
-        refusal = admission_refusal(row, table, require_after)
+        refusal = admission_refusal(row, table, require_after, gate)
         if refusal is None:
             legs = row.get("per_leg") or {}
             measurement, refusal = build_measurement(
@@ -507,14 +612,14 @@ def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool
         base_refs = [r for r in refs if r["row"].get("leg") == PHASE0_BASELINE_LEG]
         base = base_refs[0] if len(base_refs) == 1 else None
         base_refusal = ("the point carries no single baseline leg" if base is None else
-                        admission_refusal(base["row"], table, require_after))
+                        admission_refusal(base["row"], table, require_after, gate))
         if base is not None and base["row"].get("drive_table") == table:
             baselines += 1
         for ref in refs:
             row = ref["row"]
             if row.get("leg") == PHASE0_BASELINE_LEG:
                 continue
-            refusal = admission_refusal(row, table, require_after)
+            refusal = admission_refusal(row, table, require_after, gate)
             if refusal is None and base_refusal is not None:
                 refusal = f"baseline leg: {base_refusal}"
             if refusal is None:
@@ -527,6 +632,8 @@ def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool
                 leave_out(ref, refusal)
     counts = {"read": len(lines), "duplicates": len(lines) - len(unique),
               "baseline_legs": baselines}
+    if gate == BETWEEN_PASS_GATE:
+        measurements = between_pass(measurements, excluded)
     return measurements, excluded, counts
 
 
@@ -842,6 +949,29 @@ RULES = {
                    "allowed by name, and is then not compared at all",
 }
 
+#: The rules a record cut by the between-pass gate (R33) states: the window rule's, with
+#: admission restated and the gate itself named. A record cut by the window rule states
+#: :data:`RULES` byte for byte.
+RULES_R33 = dict(
+    RULES,
+    admission="verdict TIMED or TIMED-NOT-REPORTABLE with every gating floor passed and "
+              "all six recorded (the same-table control among them; the within-pass "
+              "window floor of a row written before R33 is not read), the plan's slots "
+              "served by this table alone (substitution.tables_dispatched), lifted on "
+              "the device, no foreign process on the row's device by UUID before or "
+              "after, a recorded deposit_repair digest, and the between-pass gate",
+    between_pass="owner ruling R33 (2026-10-16): the admitted rows of one case, grid "
+                 "shape, repair program and timing instrument (window count and the probe "
+                 "floor its target sets) are its passes; two or more enter only when the "
+                 "spread of their "
+                 "fused and of their baseline rates, (max - min) / median, is at most "
+                 "5 % on each leg, else every row of the point is left out by name; a "
+                 "point timed once has no between-pass spread and is not struck by it",
+    window_spread="each row's within-pass window spreads are recorded (fused_spread, "
+                  "baseline_spread) and gate no admission; the veto margin reads them as "
+                  "dispatch_preference spells it",
+)
+
 
 #: Where each table's release lives: (module, name) of ``{product: route cases}``, the
 #: map the dispatch path itself reads. Read only when the release is accounted for.
@@ -911,8 +1041,13 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
         min_rows: int = MIN_ROWS_PER_KEY, select_route: Optional[str] = None,
         require_box_after: bool = False,
         allow_unpinned_subject: Sequence[str] = (),
-        released: Optional[Mapping[str, Sequence[str]]] = None) -> Dict[str, Any]:
+        released: Optional[Mapping[str, Sequence[str]]] = None,
+        gate: str = BETWEEN_PASS_GATE) -> Dict[str, Any]:
     """The sealed record for ``table`` from every ``rows.jsonl`` under ``roots``.
+
+    ``gate`` is the rule the rows are admitted by (:data:`GATES`): the between-pass gate
+    of R33, stamped in ``cut.gate``, or the window floor every record cut before it was
+    cut by, which is not stamped, so such a record recomputes byte for byte.
 
     ``released`` (``{product: [route case]}``, :func:`released_cases`) accounts for the
     release: the record names what it lacks under ``missing``. Absent, nothing is
@@ -927,7 +1062,7 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
     lines, file_table = read_files(files, base)
     if not lines:
         raise CutRefused("no_rows", f"no rows.jsonl line under {list(roots)}")
-    measurements, excluded, counts = gather(lines, table, require_box_after)
+    measurements, excluded, counts = gather(lines, table, require_box_after, gate)
     measurements, route = one_program(measurements, excluded, select_route)
     barrier = subject_barrier(table, measurements, allow_unpinned_subject)
     classes, skipped = attribute(measurements)
@@ -950,7 +1085,8 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
                 "select_route": select_route,
                 "require_box_after": bool(require_box_after),
                 "allow_unpinned_subject": sorted(set(allow_unpinned_subject))},
-        "rules": dict(RULES, min_rows_per_key=int(min_rows)),
+        "rules": dict(RULES if gate == WINDOW_GATE else RULES_R33,
+                      min_rows_per_key=int(min_rows)),
         "route": route,
         "subject_barrier": barrier,
         "host": [json.loads(host) for host in hosts],
@@ -968,6 +1104,8 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
         "excluded": excluded,
         "keys": keys,
     }
+    if gate != WINDOW_GATE:
+        record["cut"]["gate"] = gate
     if released is not None:
         record["cut"]["account_for_release"] = True
         lacking = missing_from_release(keys, excluded, released)
@@ -1237,6 +1375,9 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
             for source, digest in sorted(dp.compared_emitters(record).items()))
             or "none"),
     ]
+    if record["cut"].get("gate") == BETWEEN_PASS_GATE:
+        # A RECORD CUT BEFORE R33 carries no stamp and its report reads as it always did.
+        out.append("gate: " + record["rules"]["between_pass"])
     barrier = record["subject_barrier"]
     for source in barrier["allowed_unpinned"]:
         out.append(
@@ -1418,7 +1559,9 @@ def check(path: str, base: str) -> int:
                     select_route=parameters["select_route"],
                     require_box_after=parameters["require_box_after"],
                     allow_unpinned_subject=parameters["allow_unpinned_subject"],
-                    released=released)
+                    released=released,
+                    # BY THE RULE IT WAS CUT BY: no stamp is the window floor (R33)
+                    gate=parameters.get("gate", WINDOW_GATE))
     except (CutRefused, dp.RecordRefused) as refusal:
         say(f"DIFFERS {path}: the rows on disk no longer cut at all -- {refusal}")
         return EXIT_DIFFERS

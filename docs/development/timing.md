@@ -28,7 +28,11 @@ installed with the package.
 - **A GPU row** is one run of <code>bench_fused_products.py</code> on one case and
   size: three legs (the dispatched route, the certified single kernels, the array
   path), lifted in one process, timed in AB/BA-interleaved windows with monitors
-  attached. Its verdict is the harness's own (<code>TIMED</code> or not). The
+  attached. Its verdict is the harness's own (<code>TIMED</code> or not). The spread
+  of each leg's windows is recorded with the row (each leg's <code>spread</code>), and
+  the bench still counts it among its floors (<code>spread_within_gate</code>); the
+  cutters read a pass struck on that floor alone as unstruck, and a leg enters on the
+  spread of its pass rates ([The gate of record](#the-gate-of-record-r33)). The
   ladder adds what launched, bit identity, and the deposit-repair route the case
   declares. Each window's step count is sized from a timed probe that runs after a
   restore and a few untimed steps, so the restore's own cost does not shorten the
@@ -73,7 +77,11 @@ own record of the row carries the policy in force (<code>subnormal_policy</code>
 policy axis and <code>dispatch_preference.consult</code> takes no policy, so once the
 consult is wired into dispatch it answers a flush run from keep rows. Nothing in the 1.0
 dispatch path consults the records yet (<code>meep_gpu/dispatch_preference.py</code>,
-"UNWIRED"): they move no slot under either policy.
+"UNWIRED"): they move no slot under either policy. 1.0.0 ships the records cut on
+2026-09-21, from rows of a development tree. The 1.0 timing round (2026-10-16) cut new
+records for compute capability 8.6 from its fused rows; they land in a later 1.0.x release,
+because they are package data the consult reads and a documentation update moves no package
+file.
 
 ## The order of work
 
@@ -459,6 +467,10 @@ are tied to the MEEP rows by the ladder's code digest instead), and a MEEP best 
 count that fails the 5 % gate (<code>meep-best-fails-gate</code>). MEEP rows the
 bench struck, or whose monitor was not stepped, enter no median.
 
+These two builders keep their own gate, on every leg and MEEP's included: each pass's
+within-window spread and the spread of the pass medians, both within 5 %. It is not the
+rule the tables of record are cut by ([The gate of record](#the-gate-of-record-r33)).
+
 ## The release round, one row at a time
 
 Timing follows the certification's modular pattern. The unit is a **row**; any subset of
@@ -653,8 +665,12 @@ python parity/meep_gpu/timing_rows.py report --store S --release-root R --catalo
 
 - **The identical-case table** takes each key's newest valid row that carries a
   measurement (a later attempt that failed does not shadow an earlier timing). A GPU
-  route or the array control carries the 5 % gate (every pass timed and unstruck by the bench's own
-  floors, the between-pass spread within 5 %). A MEEP leg carries its between-pass spread,
+  route or the array control carries the 5 % gate of record: no pass struck by the
+  bench's floors (its window floor aside) or the ladder's checks, and the spread of its
+  pass rates within 5 %;
+  each pass's window spreads are printed beside it and gate nothing. Every leg is
+  re-derived from the passes its record stores, not read off the status it was
+  collected with. A MEEP leg carries its between-pass spread,
   recorded and never gated, and is struck only for what is not spread (its geometry
   digest, its precision, its threads, its monitor). A ratio is the route's median over
   the best unstruck MEEP reference median of the same row and says whether it enters:
@@ -670,21 +686,66 @@ python parity/meep_gpu/timing_rows.py report --store S --release-root R --catalo
   added beside the others; a record of an architecture whose rows are absent is never
   touched; a record cut on another device is refused, with no override. The release is
   accounted for: a record cut from part of a campaign names every released (product,
-  case) it lacks under <code>missing</code>, with the rows' own reason (the 1.0 round's
-  eleven <code>ERROR</code> rows), instead of failing. Every catalog fused key of the
+  case) it lacks under <code>missing</code>, with the rows' own reason (the eleven
+  <code>ERROR</code> rows of the round's first timing, 2026-10-13, before a harness
+  fix), instead of failing. Every catalog fused key of the
   table and architecture without a valid measured row (a sweep point never timed
   included) is named in the cut's output and in the report beside the record, and a
   table the catalog names that no valid row reaches is named as not cut (a table whose
-  DRIVE cases are the release's and that has no sweep included).
+  DRIVE cases are the release's and that has no sweep included). A row is admitted on
+  its floors without the window spread, and the rows of one case and grid shape timed
+  by one instrument on one deposit-repair program (a sweep point's passes; a DRIVE unit
+  at the same grid is a row of its own) enter only when their fused and their baseline
+  rates agree within 5 %; a record so cut says so in <code>cut.gate</code>
+  (<code>between_pass</code>). Each row's window spreads stay in the record and in the
+  veto margin, which <code>dispatch_preference.py</code> defines and which is no
+  admission gate.
 - **The fused-product report** is <code>build_fused_timing_report.py</code> on the selected
   fused rows, staged as that builder reads them, with the catalog's keys it lacks, and
   its tables no valid row reaches, in <code>missing_keys.txt</code> beside it. The
   release's DRIVE cases are known only by running the bench's estimate, so a table that
   takes them is named there with a pointer to its record's <code>missing</code> block,
-  which names every released (product, case) without a row.
+  which names every released (product, case) without a row. It lists a row as refused
+  only under a floor that gates; the window spread is not one.
 
-<code>cut_timing_record.py --check</code> recomputes a record from the row files it names;
-the store is written once per key and attempt, so every file a record names stays there.
+<code>cut_timing_record.py --check</code> recomputes a record from the row files it names,
+by the rule it was cut by: a record with no <code>cut.gate</code> was cut by the window
+floor (every record cut before R33, the 2026-09-21 records among them) and recomputes by
+it. The store is written once per key and attempt, so every file a record names stays
+there.
+
+### The gate of record (R33)
+
+A GPU leg enters when the spread of its pass rates, (max − min) / median over the row's
+passes, is at most 5 %, and no pass of it is struck for anything else. The rule is the
+same on both platforms, for the ladder's rows (each GPU route and the array control) and
+for the fused-product rows (a sweep point's two passes; a DRIVE unit is timed once). The within-pass window spread is
+still computed and recorded with every pass and every row, and no cut gates on it. MEEP's
+pass spread is recorded and never gated, as before. Unchanged: the quiet window, the
+variance precondition, the watcher, the identity and dispatch checks, and the bench
+itself, floors included: the change is in the cutters, which read past its window floor.
+
+It replaced the window-spread gate (owner ruling R33, 2026-10-16), and it was ruled after
+the 2026-10-16 runs had been seen. The bench marks a pass in which any leg's timed
+windows spread above 5 % <code>TIMED-NOT-REPORTABLE</code>
+(<code>spread_within_gate</code>), and until then that struck the leg. A published figure is a median
+of pass medians, so what has to hold for it is that the medians reproduce. On the Mac's
+2026-10-16 ladder the window floor struck 17 of 24 timed GPU passes and 6 of 8 GPU
+medians. The jitter was one-window blips: where the fused leg's 2 s windows spread above
+5 % in a pass (11 of the 17), leaving out its single farthest window brought the spread
+to 2.1-5.1 %. The same medians reproduced across passes to 0.16-2.44 %.
+
+Every row is cut by this rule, whenever it was written. A pass whose ladder struck it
+on the window floor alone (<code>TIMED-NOT-REPORTABLE: floors failed
+['spread_within_gate']</code>) is read unstruck; a strike naming another floor as well
+keeps that floor; every other strike stands. One limit is stated in every table: the
+ladder's recorder stops at a row's first strike, so on such a pass it never evaluated
+its later checks (what the route launched, a GPU-only row's identity row, the
+deposit-repair route, the host conditions), and the record keeps none of them to
+re-read. The limit holds for every pass the bench strikes on its window floor, new rows
+included, for as long as the bench counts it among its floors. A fused DRIVE row is timed
+once, so it has no between-pass spread and is not
+struck by one.
 
 ## What a row licenses
 
@@ -694,6 +755,109 @@ gate rule stated beside it. A row licenses no statement about another case,
 size, host, GPU, MEEP build or rank count. Rows taken with
 <code>--allow-uncertified 1</code> are not certified and enter no certified
 figure.
+
+## The 1.0 timing against 2026-10-13
+
+The 1.0 round timed its code twice on the same two machines, with MEEP re-timed in each
+session: on 2026-10-13, on an earlier tree of the 1.0 series, and on 2026-10-16, on the
+release's bytes. The 2026-10-16 tables are the tables of record
+([Will it help?](../guides/will-it-help.md#the-comparison-with-meep)), cut from the row store
+under [the gate of record](#the-gate-of-record-r33), with the release tree as
+<code>--release-root</code>. A row is valid on a tree whose files match the ones its
+processes recorded importing: the package and the timing harness, including
+<code>bench_fused_products.py</code>, which every GPU row imported. The cutters
+(<code>timing_rows.py</code>, <code>cut_timing_record.py</code>,
+<code>build_fused_timing_report.py</code>) are imported by none of the timed processes, so a
+change to them owes no row a re-time; a change to a file a row imported, the bench
+included, owes a re-time to every row that imported it. The 2026-10-13 ladders were recorded
+before the row store
+existed: they are ladder ledgers, without the quiet-window, watcher and environment records a
+row carries, so the row tool selects none of them for a release. For this comparison their
+ledgers were cut by the same table cutter, under both gates.
+
+**NVIDIA, one RTX A6000**, per step, Mcell-steps/s (medians of three passes; "new / old" is
+2026-10-16 over 2026-10-13; MEEP is each date's own build, the round's first build on
+2026-10-13 and the reference build on 2026-10-16):
+
+| Cells | Leg | 2026-10-13 | 2026-10-16 | New / old | Ratio against MEEP's fastest |
+|---:|---|---:|---:|---:|---|
+| 512,000 | Triton route | 745.2, struck by the window gate, enters under the gate of record | 958.2 | 1.286 | 1.28× → 1.65× |
+| | CUDA-only route | 687.8 | 841.5 | 1.223 | 1.18× → 1.45× |
+| | array path | 84.2 | 84.4 | 1.002 | |
+| | MEEP, 32 ranks (fastest) | 583.1 | 581.9 | 0.998 | |
+| 2,097,152 | Triton route | 2,560.5 | 2,589.8 | 1.011 | 3.94× → 3.98× |
+| | CUDA-only route | 2,844.0, struck (9.2 % between passes) | 2,985.9 | 1.050 | 4.37×, struck → 4.59× |
+| | array path | 316.5, struck (8.8 % between passes) | 349.9 | 1.105 | |
+| | MEEP, 48 ranks (fastest) | 650.1 | 651.1 | 1.001 | |
+| 7,077,888 | Triton route | 2,797.1 | 2,794.3 | 0.999 | 5.02× → 5.04× |
+| | CUDA-only route | 3,218.5 | 3,221.0 | 1.001 | 5.78× → 5.81× |
+| | array path | 374.1 | 374.0 | 1.000 | |
+| | MEEP, 48 ranks (fastest) | 557.1 | 554.8 | 0.996 | |
+
+- **The denominator held.** MEEP's fastest moved by 0.996 to 1.001. The 2026-10-13 MEEP build
+  (`-g -O2`, portable, built without `-ffp-contract=off`), timed again on the same host after
+  the 2026-10-16 session, MEEP alone, reads within 0.3 % of the reference build at MEEP's
+  fastest rank count at 2,097,152 and 7,077,888 cells; at 512,000 cells the reference build
+  reads 3.8 % faster, about as much as that MEEP run's own spread between its passes (3.8 %),
+  so the bridge does not separate the two builds there. Every move above is the GPU's.
+- **What moved is a fixed cost per step**, and it vanishes with size: the Triton step went
+  from 0.687 to 0.534 ms at 512,000 cells (−0.153 ms), 0.819 to 0.810 ms at 2,097,152 and
+  2.530 to 2.533 ms at 7,077,888; the CUDA-only step from 0.744 to 0.608 ms (−0.136 ms),
+  0.737 to 0.702 and 2.199 to 2.197. It is **attributed by inference only**, with no A/B run
+  to isolate it, to this release's skip of a silent source table's deposit (CHANGELOG, "A
+  silent source table skips its deposit where MEEP's subtraction leaves every word"): the timed
+  windows run after the case's pulse has ended. The fused-product rows agree: at the sweep's
+  24,000 cells the CUDA single arms of `pml_2d` fell from 0.502 to 0.366 ms per step
+  (−0.136 ms) and its two-pair fused step from 0.825 to 0.768, while from 216,000 cells up
+  every sweep point reads within 2 % of 2026-10-13.
+- **Not attributable from these rows**: the CUDA-only and array-path moves at 2,097,152 cells
+  (+5.0 % and +10.5 % against medians struck on 2026-10-13); the array path reads level at
+  the other two sizes.
+- **The lift** moved with the code (the bulk permittivity read, CHANGELOG "The lift reads
+  MEEP's stored permittivity in bulk, on the builds it was compared on"): 19.3, 69.7 and
+  218.4 s on 2026-10-13 against 7.4, 19.5 and 48.5 s on the Triton route; the derived
+  break-even went from about 73,000 (struck), 20,700 and 17,200 steps to about 5,900, none and
+  460.
+- **Fused products**: over the 63 cases timed both times on the same table, the fused step
+  fell on 58 and the single arms on 63, the single arms by more, so the fused-against-singles
+  ratio reads lower on 58 of 63 (the CUDA `pml_2d` row 0.610x → 0.464x). The eleven
+  2026-10-13 cases that stopped on a harness defect all time on 2026-10-16. The two-pair
+  crossover stays between 2,400,000 and 5,400,000 cells.
+
+**Apple, one M1 Max**, per step, Mcell-steps/s (MEEP is each date's own build, as on the
+NVIDIA host):
+
+| Cells | Metal route, 10-13 → 10-16 | MEEP, 8 ranks | MEEP, 1 rank | Ratio against MEEP at 8 ranks |
+|---:|---:|---:|---:|---:|
+| 110,592 | 170.9 → 261.1 (+52.7 %) | 312.2 → 318.0 (+1.8 %) | 74.4 → 73.5 (−1.2 %) | 0.55× → 0.82× |
+| 262,144 | 367.4 → 508.2 (+38.3 %) | 414.4 → 418.7 (+1.0 %) | 87.3 → 85.2 (−2.3 %) | 0.89× → 1.21× |
+| 512,000 | 600.8 → 765.5 (+27.4 %) | 398.6 → 452.3 (+13.5 %) | 91.3 → 95.5 (+4.6 %) | 1.51× → 1.69× |
+| 2,097,152 | 1,085.2 → 1,080.2 (−0.5 %) | 441.2 → 449.5 (+1.9 %) | 98.9 → 99.8 (+0.9 %) | 2.46× → 2.40× |
+| 7,077,888 | 1,365.3 → 1,363.2 (−0.2 %) | 492.8 → 500.3 (+1.5 %) | 106.8 → 105.4 (−1.3 %) | 2.77× → 2.72× |
+
+No 2026-10-13 ratio enters under either gate, and every 2026-10-16 ratio enters under the
+gate of record. **Nothing here is attributed**: three things changed at once, the GPU code
+(an earlier tree of the 1.0 series, then this release), the MEEP build (built without
+`-ffp-contract=off`, then the reference build) and the GPU's windows (10 windows of 12 s
+asked, which came out at about 2.6 to 3.2 s, then six 2 s windows sized from a probe), and the
+host's background differed. What the numbers show, and no more: at 2,097,152 and 7,077,888
+cells the Metal route and MEEP at 8 ranks both read within 2 % of 2026-10-13, so the
+contraction-off build did not slow MEEP at 8 ranks measurably there; at 512,000 cells and
+below the Metal route reads 27 to 53 % above 2026-10-13, the sizes where that run's windows
+were shortest. No bridge between the two MEEP builds ran on this machine: the earlier
+build's environment no longer exists.
+
+**The 2026-10-13 rows under each gate.** On the NVIDIA host the window gate admitted 4 of 6
+GPU ratios and the gate of record admits 5 of 6 (the Triton route at 512,000 cells, whose
+three pass medians agree within 0.86 %); the CUDA-only route at 2,097,152 cells stays struck.
+On the Apple laptop the window gate admitted 0 of 5 Metal medians and the gate of record 5 of
+5, yet 0 of 5 ratios enter under either: that session's precondition spread 5.75 % on the
+Metal route, above the 5 % of the release's rule (the session itself had restated a 10 %
+bound and read GO). Of the passes the gate of record newly admits on 2026-10-13, read against
+the ladders' own logs, none fails a check the window gate's recorder skipped (3 of 18 timed
+NVIDIA GPU passes, 11 of 15 Apple). The fused rows of 2026-10-13, cut by the record cutter
+under each gate for this comparison only: Triton admits 37 of 67 rows under the window floor
+and 62 of 67 under the gate of record; CUDA 29 of 57 under both.
 
 ## Reproducing the 2026-09-28 ladder
 

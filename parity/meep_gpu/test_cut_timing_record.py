@@ -369,7 +369,11 @@ def excluded_reasons(record):
     return sorted(item["reason"] for item in record["excluded"])
 
 
-@pytest.mark.parametrize("floor", FLOORS)
+#: The floors that gate under owner ruling R33: every recorded one but the window floor.
+GATING_FLOORS = tuple(name for name in FLOORS if name not in cut.WINDOW_FLOORS)
+
+
+@pytest.mark.parametrize("floor", GATING_FLOORS)
 def test_a_row_failing_any_floor_is_not_admitted(tmp_path, floor):
     bad = bench_row(case="bad")
     bad["floors"][floor] = False
@@ -382,6 +386,112 @@ def test_a_row_failing_any_floor_is_not_admitted(tmp_path, floor):
     reason, = excluded_reasons(record)
     assert floor in reason
     assert [item["case"] for item in record["excluded"]] == ["bad"]
+
+
+def test_the_window_floor_gates_nothing_under_r33_and_the_window_rule_still_reads_it(
+        tmp_path, capsys):
+    """R33: a row the bench struck for its within-pass window spread alone (written
+    before the bench moved the spread out of its floors) is admitted, as is one that
+    carries no window floor at all (written after); its window spread stays in the
+    record. A record cut by the window rule, which every record before R33 was, still
+    refuses it, carries no ``gate`` stamp and its pre-R33 rules, and ``--check``
+    recomputes each record by its own rule."""
+    jitter = bench_row(case="jitter", fused_spread=0.10)
+    jitter["floors"]["spread_within_gate"] = False
+    jitter["reportable"] = False
+    jitter["verdict"] = "TIMED-NOT-REPORTABLE"
+    after = bench_row(case="after", fused_spread=0.10)
+    after["floors"].pop("spread_within_gate")
+    write(tmp_path, "tree/rows.jsonl", [bench_row(), jitter, after])
+    record = cut_tree(tmp_path)
+    assert record["rows"]["admitted"] == 3 and record["excluded"] == []
+    assert record["cut"]["gate"] == cut.BETWEEN_PASS_GATE
+    assert record["rules"]["admission"] == cut.RULES_R33["admission"]
+    assert "between_pass" in record["rules"]
+    priced = {row["case"]: row for entry in entries(record) for row in entry["measurements"]}
+    assert priced["jitter"]["fused_spread"] == pytest.approx(0.10), \
+        "the window spread is recorded, never dropped"
+    old = cut_tree(tmp_path, gate=cut.WINDOW_GATE)
+    assert "gate" not in old["cut"]
+    assert {k: v for k, v in old["rules"].items() if k != "min_rows_per_key"} == cut.RULES
+    assert sorted(excluded_reasons(old)) == ["floor failed: spread_within_gate",
+                                             "floor not recorded: spread_within_gate"]
+    for which, built in (("r33", record), ("window", old)):
+        out = out_path(tmp_path / which)
+        out.parent.mkdir(parents=True)
+        out.write_text(dp.dumps(built))
+        assert run(tmp_path, "--check", str(out)) == cut.EXIT_OK, which
+        assert "recomputes byte for byte" in capsys.readouterr().out
+
+
+def test_the_passes_of_a_point_enter_only_when_their_rates_agree_within_5_percent(
+        tmp_path):
+    """R33, between passes: two rows of one case and grid shape are its passes. A 6 %
+    disagreement on the fused leg (or on the baseline) leaves every row of the point
+    out by name; 1 % admits both; a point timed once has no between-pass spread."""
+    write(tmp_path, "tree/rows.jsonl", [
+        bench_row(case="wide", fused_ms=1.00, fused_spread=0.10),
+        bench_row(case="wide", fused_ms=1.00 / 0.94, utc="2026-09-19T14:00:00Z"),
+        bench_row(case="close", fused_ms=1.00, fused_spread=0.10),
+        bench_row(case="close", fused_ms=1.01, utc="2026-09-19T14:00:00Z"),
+        bench_row(case="base_wide", base_ms=0.50),
+        bench_row(case="base_wide", base_ms=0.50 / 0.94, utc="2026-09-19T14:00:00Z"),
+        bench_row(case="once", fused_ms=1.00, fused_spread=0.10)])
+    record = cut_tree(tmp_path, min_rows=1)
+    left_out = {item["case"]: item["reason"] for item in record["excluded"]}
+    assert sorted(left_out) == ["base_wide", "wide"]
+    assert len([item for item in record["excluded"] if item["case"] == "wide"]) == 2
+    assert "between-pass spread" in left_out["wide"] and "fused" in left_out["wide"]
+    assert "R33" in left_out["wide"]
+    assert "baseline" in left_out["base_wide"] and "fused" not in left_out["base_wide"]
+    priced = sorted(row["case"] for entry in entries(record) for row in entry["measurements"])
+    assert priced == ["close", "close", "once"]
+
+
+def test_a_drive_unit_and_a_sweep_point_of_one_grid_are_two_rows(tmp_path):
+    """A DRIVE unit (six windows sized on a 2 s target) and a sweep point at the same
+    case and grid shape (four on 1.5 s) are two rows of the round, each with its own
+    passes, as their keys are: the 6 % between them strikes neither, while the sweep
+    point's own two passes, 0.2 % apart, are its passes."""
+    def clean(**options):
+        return bench_row(case="offdiag_2d", welded=ONE_PAIR, bracketed_slots=(), **options)
+
+    def timed(row, windows, floor):
+        for leg in row["per_leg"].values():
+            leg["windows"] = windows
+        row["sizing"] = {"fused": {"probe": {"min_seconds": floor}}}
+        return row
+
+    write(tmp_path, "tree/rows.jsonl", [
+        timed(clean(fused_ms=0.94), 6, 0.2),
+        timed(clean(fused_ms=1.000, utc="2026-09-19T14:00:00Z"),
+              4, 0.15),
+        timed(clean(fused_ms=1.002, utc="2026-09-19T15:00:00Z"),
+              4, 0.15)])
+    record = cut_tree(tmp_path, min_rows=1)
+    assert record["excluded"] == [] and record["rows"]["admitted"] == 3
+    write(tmp_path, "tree/rows.jsonl", [
+        bench_row(case="anchor"),
+        timed(clean(fused_ms=1.00), 4, 0.15),
+        timed(clean(fused_ms=1.00 / 0.94, utc="2026-09-19T14:00:00Z"),
+              4, 0.15)])
+    reasons = excluded_reasons(cut_tree(tmp_path, min_rows=1))
+    assert len(reasons) == 2 and all("between-pass" in reason for reason in reasons)
+
+
+def test_two_repair_routes_of_one_point_are_never_one_points_passes(tmp_path):
+    """The passes of a point are its rows on ONE repair program: a full-bracket row and
+    a restricted row of one case and grid shape, 20 % apart, are not compared. With one
+    route selected the other is left out by its route, and the selected row enters."""
+    write(tmp_path, "tree/rows.jsonl", [
+        bench_row(case="pml_2d", fused_ms=1.0),
+        bench_row(case="pml_2d", fused_ms=1.2, per_step=1, restricted=6000,
+                  utc="2026-09-19T14:00:00Z")])
+    wanted = f"{SHA_A[:12]}:linear:1-per-step:restricted"
+    record = cut_tree(tmp_path, select_route=wanted, min_rows=1)
+    assert record["rows"]["admitted"] == 1 and record["route"]["id"] == wanted
+    assert excluded_reasons(record) == [
+        f"another repair route: {SHA_A[:12]}:linear:3-per-step:full"]
 
 
 def test_a_control_on_another_table_is_refused_even_if_the_row_says_timed(tmp_path):
@@ -755,7 +865,7 @@ def test_the_phase0_spelling_pairs_each_timed_leg_with_its_singles(tmp_path):
 
 def test_a_phase0_leg_is_refused_with_its_baseline(tmp_path):
     rows = phase0_rows()
-    rows[-1]["floors"]["spread_within_gate"] = False      # the singles leg
+    rows[-1]["floors"]["no_compiles_inside_timed_region"] = False   # the singles leg
     rows[-1]["reportable"] = False
     rows[-1]["verdict"] = "TIMED-NOT-REPORTABLE"
     write(tmp_path, "tree/triton/pml_2d_res20/rows.jsonl", rows + phase0_rows(
@@ -1338,8 +1448,12 @@ def test_the_reasons_read_as_no_timing_are_the_ones_the_cutter_writes():
                            (dict(row, verdict="SKIP-NOT-THIS-LEG"), "triton"),
                            (dict(row, prefer_gpu=False), "triton")):
         assert cut.admission_refusal(spoiled, table, False).startswith(_NOT_A_TIMING)
-    failed = dict(row, floors=dict(row["floors"], spread_within_gate=False))
+    failed = dict(row, floors=dict(row["floors"], bit_identical=False))
     assert not cut.admission_refusal(failed, "triton", False).startswith(_NOT_A_TIMING)
+    jitter = dict(row, floors=dict(row["floors"], spread_within_gate=False))
+    assert cut.admission_refusal(jitter, "triton", False) is None, "R33"
+    assert not cut.admission_refusal(jitter, "triton", False, cut.WINDOW_GATE).startswith(
+        _NOT_A_TIMING)
 
 
 def test_a_partial_set_names_its_missing_keys_and_still_cuts(tmp_path):

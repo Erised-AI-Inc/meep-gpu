@@ -1,9 +1,9 @@
 # Bit-parity coverage board
 
-Built by `parity/meep_gpu/build_parity_board.py` at 2026-10-16T01:30:01Z on subject `d492a18d9930faf8` (1163 files). Generated: do not edit; re-run `build`.
+Built by `parity/meep_gpu/build_parity_board.py` at 2026-10-16T23:20:32Z on subject `41da12d02fcae9e7` (1163 files). Generated: do not edit; re-run `build`.
 
 Live array-path oracle: `array_path_oracle/real-v6` `1ab516279d74002a` (20 fixture cases).
-Test outcomes: recorded 2026-10-16T01:29:32Z on Darwin arm64, 216 test files run; carved from one integration's suites: the CUDA and Triton test files' cases of its package suite (CPU-only shim, Apple GPU hidden, SUITE_ENFORCE_SKIPS=0) and the Metal test files' cases of its device run (Apple GPU, no shim), on this tree's outcome subject; every marker; MEEP_GPU_DISPATCH=0.
+Test outcomes: recorded 2026-10-16T23:19:57Z on Darwin arm64, 216 test files run; carved from one integration's suites: the CUDA and Triton test files' cases of its package suite (CPU-only shim, Apple GPU hidden, SUITE_ENFORCE_SKIPS=0) and the Metal test files' cases of its device run (Apple GPU, no shim), on this tree's outcome subject; every marker; MEEP_GPU_DISPATCH=0.
 
 Each count is N / D: D is the rows the column applies to and could measure; refused rows are counted beside it, never as a gap and never as a pass. Baselines (owner ruling R13): keep and flush on CUDA, Triton and the array path; flush only on Metal.
 
